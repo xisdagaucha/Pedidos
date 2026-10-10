@@ -2595,6 +2595,10 @@ const Gestora = {
         const tmp = { cache: {}, withPhotos: true }; COLLS.forEach(k => tmp.cache[k] = {}); seedDemo(tmp);
         for (const x of Object.values(tmp.cache.categories)) await Store.set('categories', x.id, x);
         for (const x of Object.values(tmp.cache.items)) await Store.set('items', x.id, x);
+        /* destaques do tablet (picolés, caipirinhas, Xis Alcatra) e os lanches de domingo da equipe */
+        if (!Store.all('banners').length) for (const x of Object.values(tmp.cache.banners)) await Store.set('banners', x.id, x);
+        const sm = JSON.parse(JSON.stringify(Store.base().staffMenu || DEFAULT_SETTINGS.staffMenu)); const sm0 = (tmp.cache.settings.main.staffMenu || {})[0];
+        if (sm0 && !(sm[0] && sm[0].lanches && sm[0].lanches.length)) { sm[0] = { lanches: sm0.lanches, custoLanche: {} }; await Store.update('settings', 'main', { staffMenu: sm }); }
         toast('Cardápio carregado');
       };
       return;
