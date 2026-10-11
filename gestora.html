@@ -578,7 +578,7 @@ const LOGO_FAVICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYA
 
 /* ===================== Pedido X — núcleo ===================== */
 'use strict';
-const APP_VERSION = '2.1.0';
+const APP_VERSION = '2.2.0';
 
 /* ---------- utilitários ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -756,18 +756,22 @@ async function qrSvg(text) {
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c + m} ${r + m}h1v1h-1z`;
   return `<svg viewBox="0 0 ${n + 2 * m} ${n + 2 * m}" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
 }
+const qrKey = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 64);
 /* conteúdo dos QR: XG-C:27 (comanda) / XG-M:5 (mesa) */
 function parseQR(s) {
   s = String(s || '').trim();
   let m = s.match(/XG-([CM]):(\d+)/i); if (m) return { type: m[1].toUpperCase() === 'C' ? 'comanda' : 'mesa', n: +m[2] };
   m = s.match(/^(\d{1,4})$/); if (m) return { type: 'comanda', n: +m[1] };
-  return null;
+  /* cartões antigos (Goomer etc.): código cadastrado em Mesas e comandas */
+  const map = (typeof Store !== 'undefined' && Store.ready && Store.settings().qrCodes) || {};
+  const k = qrKey(s); if (k && map[k]) return { type: 'comanda', n: +map[k] };
+  return { type: 'desconhecido', raw: s };
 }
 
 /* ---------- QR (ler pela câmera) ---------- */
-async function startScanner(videoEl, onCode) {
+async function startScanner(videoEl, onCode, facing = 'user') {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Este aparelho não liberou a câmera.');
-  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 } }, audio: false });
+  const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 } }, audio: false });
   videoEl.srcObject = stream; videoEl.setAttribute('playsinline', ''); await videoEl.play();
   let stop = false, detector = null;
   if ('BarcodeDetector' in window) { try { detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { detector = null; } }
@@ -796,7 +800,7 @@ async function startScanner(videoEl, onCode) {
 /* cada aparelho pertence a uma loja; pedidos, comandas, impressões, caixa e equipe ficam separados por loja.
    cardápio, fotos e destaques são os mesmos para todas. A gestora pode ver uma loja ou todas. */
 const SCOPED = ['comandas', 'tickets', 'orders', 'events', 'calls', 'printJobs', 'devices', 'surveys', 'caixas', 'equipe', 'pessoas', 'vouchers'];
-const LOJA_FIELDS = ['mesas', 'comandas', 'printers', 'printerLabels', 'printerCols', 'contaPrinter', 'chamadoPrinter', 'rota', 'staffToday'];
+const LOJA_FIELDS = ['mesas', 'comandas', 'printers', 'printerLabels', 'printerCols', 'contaPrinter', 'chamadoPrinter', 'rota', 'staffToday', 'qrCodes'];
 const Loja = {
   role() { return window.PEDIDOX_ROLE || (typeof App !== 'undefined' && App.role) || 'x'; },
   key() { const r = this.role(); return 'pedidox_loja_' + (Store.mode === 'demo' && r !== 'gestora' ? 'demo' : r); },
@@ -1863,7 +1867,8 @@ const Tablet = {
         if (v === 'C') typed = ''; else if (v === 'OK') return finish(+typed); else if (typed.length < 3) typed += v;
         $('#kp-d', m.el).textContent = typed || ' ';
       });
-      startScanner($('video', m.el), raw => { const p = parseQR(raw); if (p && p.type === 'comanda') finish(p.n); })
+      let lastBad = 0;
+      startScanner($('video', m.el), raw => { const p = parseQR(raw); if (p && p.type === 'comanda') finish(p.n); else if (p && p.type === 'desconhecido' && Date.now() - lastBad > 3000) { lastBad = Date.now(); toast('Comanda não cadastrada. Chame um atendente.', 'bad'); } })
         .then(st => { stop = st; $('#sc-msg', m.el).textContent = ''; if (done) st(); })
         .catch(() => { const el = $('#sc-msg', m.el); if (el) el.innerHTML = allowKeys ? 'Câmera indisponível aqui.<br>Use o teclado abaixo.' : 'Não foi possível abrir a câmera.<br>Chame um atendente.'; });
     });
@@ -2747,17 +2752,68 @@ const Gestora = {
     const s = Store.settings(); this.qrTab = this.qrTab || 'comandas';
     const n = this.qrTab === 'comandas' ? s.comandas : s.mesas;
     pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Mesas e comandas</h1><div class="sub">O QR da comanda confirma pedidos no tablet. O da mesa é opcional.${Loja.multi() ? ` As folhas de QR servem para qualquer loja; a quantidade abaixo é de <b>${esc(Loja.nome(Loja.w()))}</b>${Loja.all() ? ' (escolha a loja no topo para mudar outra)' : ''}.` : ''}</div></div><button class="btn" id="qr-pr">${ico('printer')} Imprimir folha de QR</button></div>
+      <div class="card row" style="align-items:center"><div class="grow"><b>Usar as comandas que você já tem</b><div class="muted small">Cartões da Goomer ou de outro sistema: passe cada cartão uma vez na câmera do celular e diga o número dele. ${(() => { const c = Object.keys(s.qrCodes || {}).length; return c ? `<b>${c} ${c === 1 ? 'cartão cadastrado' : 'cartões cadastrados'}</b>${Loja.multi() ? ` em ${esc(Loja.nome(Loja.w()))}` : ''}.` : 'Nenhum cartão cadastrado ainda.'; })()}</div></div><button class="btn primary" id="qr-old">${ico('qr')} Cadastrar comandas</button>${Object.keys(s.qrCodes || {}).length ? '<button class="btn" id="qr-list">Ver cadastradas</button>' : ''}</div>
       <div class="card row"><label class="field"><span>Quantidade de mesas</span><input class="input num" id="mq-m" type="number" min="1" max="200" value="${s.mesas}" style="width:110px"></label><label class="field"><span>Quantidade de comandas</span><input class="input num" id="mq-c" type="number" min="1" max="999" value="${s.comandas}" style="width:110px"></label><button class="btn primary" id="mq-ok" style="align-self:flex-end">Salvar</button></div>
       <div class="tabs"><button data-qt="comandas" class="${this.qrTab === 'comandas' ? 'on' : ''}">QR das comandas</button><button data-qt="mesas" class="${this.qrTab === 'mesas' ? 'on' : ''}">QR das mesas</button></div>
       <div class="qr-sheet" id="qr-sheet"><p class="muted">Gerando QR codes…</p></div>`;
     $$('[data-qt]', pg).forEach(b => b.onclick = () => { this.qrTab = b.dataset.qt; this.render(); });
     $('#mq-ok', pg).onclick = async () => { await Store.setLoja({ mesas: Math.max(1, +$('#mq-m', pg).value), comandas: Math.max(1, +$('#mq-c', pg).value) }); toast('Salvo'); };
     $('#qr-pr', pg).onclick = () => printSheet($('#qr-sheet', pg).innerHTML);
+    $('#qr-old', pg).onclick = () => { if (Loja.all()) return toast('Escolha a loja no topo primeiro', 'bad'); this.cadastrarComandas(); };
+    if ($('#qr-list', pg)) $('#qr-list', pg).onclick = () => this.listaComandas();
     try {
       const cards = []; const kind = this.qrTab === 'comandas' ? 'C' : 'M';
       for (let i = 1; i <= n; i++) cards.push(`<div class="qr-card"><span class="k">${esc(s.storeName)}</span>${await qrSvg(`XG-${kind}:${i}`)}<span class="k">${kind === 'C' ? 'Comanda' : 'Mesa'}</span><span class="n">${i}</span></div>`);
       const sh = $('#qr-sheet'); if (sh) sh.innerHTML = cards.join('');
     } catch (e) { const sh = $('#qr-sheet'); if (sh) sh.innerHTML = '<p class="muted">Não foi possível gerar os QR codes agora (sem internet?).</p>'; }
+  },
+
+  /* cadastra cartões antigos: digita o número, passa o cartão na câmera, salva e pula pro próximo */
+  cadastrarComandas() {
+    const s0 = Store.settings(), map = Object.assign({}, s0.qrCodes || {});
+    const usados = () => new Set(Object.values(map).map(Number));
+    const prox = () => { const u = usados(); let i = 1; while (u.has(i)) i++; return i; };
+    let stop = null, wait = 0, salvando = false;
+    const m = modal({ title: 'Cadastrar comandas', wide: true, body: `<p class="muted" style="margin-top:0">1. Confira o número abaixo &nbsp;2. Aponte o QR do cartão com esse número para a câmera. Salva sozinho e já passa para o próximo.${Loja.multi() ? ` Loja: <b>${esc(Loja.nome(Loja.w()))}</b>.` : ''}</p>
+      <div class="row" style="align-items:flex-end"><label class="field"><span>Número do cartão</span><input class="input num" id="cq-n" type="number" min="1" max="999" value="${prox()}" style="width:120px;font-size:28px;font-weight:700"></label><div class="grow"></div><div class="muted small" id="cq-c"></div></div>
+      <div class="scan-box" style="margin-top:10px;max-height:52vh"><video muted playsinline></video><div class="frame"><i></i><i></i><i></i><i></i></div><div class="msg" id="cq-msg">Abrindo a câmera…</div></div>
+      <div id="cq-log" class="small" style="margin-top:10px;min-height:22px"></div>`, foot: '<button class="btn primary" data-x>Concluir</button>', onClose: () => { stop && stop(); this.render(); } });
+    const inp = $('#cq-n', m.el), log = $('#cq-log', m.el);
+    const cont = () => { $('#cq-c', m.el).textContent = `${Object.keys(map).length} cadastrados`; };
+    const say = (html, cls) => { log.innerHTML = `<span class="pill ${cls}">${html}</span>`; };
+    cont();
+    const onCode = async raw => {
+      if (salvando || Date.now() < wait) return;
+      const txt = String(raw || '').trim();
+      if (/XG-[CM]:\d+/i.test(txt) || /^\d{1,4}$/.test(txt)) { wait = Date.now() + 2500; return say('Esse cartão já é do Pedido X, não precisa cadastrar', 'ok'); }
+      const k = qrKey(txt); if (!k) return;
+      const n = Math.floor(+inp.value);
+      if (map[k]) { wait = Date.now() + 2500; return say(`Esse cartão já está cadastrado como comanda ${map[k]}`, 'warn'); }
+      if (!n || n < 1) { wait = Date.now() + 2000; return say('Digite o número do cartão', 'bad'); }
+      const dono = Object.keys(map).find(x => +map[x] === n);
+      if (dono && !confirm(`A comanda ${n} já tem outro cartão. Trocar pelo novo?`)) { wait = Date.now() + 2500; return; }
+      if (dono) delete map[dono];
+      map[k] = n; salvando = true;
+      try { await Store.setLoja({ qrCodes: map }); } catch (e) { delete map[k]; salvando = false; wait = Date.now() + 2000; return say('Não salvou (sem internet?). Tente de novo.', 'bad'); }
+      salvando = false; wait = Date.now() + 1800;
+      try { navigator.vibrate && navigator.vibrate(120); } catch (e) { }
+      say(`Comanda ${n} cadastrada ✓`, 'ok'); inp.value = prox(); cont();
+    };
+    startScanner($('video', m.el), onCode, 'environment')
+      .then(st => { stop = st; $('#cq-msg', m.el).textContent = ''; })
+      .catch(() => { $('#cq-msg', m.el).innerHTML = 'Não foi possível abrir a câmera.<br>Abra esta tela no celular e permita a câmera.'; });
+  },
+  listaComandas() {
+    const map = Object.assign({}, Store.settings().qrCodes || {});
+    const rows = Object.entries(map).sort((a, b) => a[1] - b[1]);
+    const max = Store.settings().comandas || 0, u = new Set(rows.map(r => +r[1])), falta = [];
+    for (let i = 1; i <= max; i++) if (!u.has(i)) falta.push(i);
+    const m = modal({ title: 'Comandas cadastradas', body: `${falta.length ? `<p class="small" style="margin-top:0"><b>Faltam:</b> ${falta.join(', ')}</p>` : '<p class="small" style="margin-top:0">Todas as comandas têm cartão.</p>'}
+      <div class="table-wrap" style="max-height:50vh;overflow:auto"><table class="t"><thead><tr><th>Comanda</th><th>Código do cartão</th><th></th></tr></thead><tbody>${rows.map(([k, n]) => `<tr><td class="num"><b>${n}</b></td><td class="muted small">${esc(k.slice(0, 12))}…</td><td class="r"><button class="icon-btn" data-qd="${esc(k)}" aria-label="Remover" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('')}</tbody></table></div>`, foot: '<button class="btn" data-x>Fechar</button>', onClose: () => this.render() });
+    m.el.addEventListener('click', async e => {
+      const b = e.target.closest('[data-qd]'); if (!b) return;
+      delete map[b.dataset.qd]; await Store.setLoja({ qrCodes: map }); b.closest('tr').remove(); toast('Cartão removido');
+    });
   },
 
   async vEquipe(pg) {
