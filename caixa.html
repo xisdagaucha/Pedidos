@@ -578,7 +578,7 @@ const LOGO_FAVICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYA
 
 /* ===================== Pedido X — núcleo ===================== */
 'use strict';
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 
 /* ---------- utilitários ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -619,6 +619,7 @@ const ICONS = {
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   menu: '<path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/>',
   grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   qr: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/>',
   tablet: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 18h2"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
@@ -795,6 +796,35 @@ async function startScanner(videoEl, onCode, facing = 'user') {
   tick();
   return () => { stop = true; stream.getTracks().forEach(t => t.stop()); };
 }
+
+/* ======================= HORÁRIOS DO CARDÁPIO ======================= */
+/* categoria ou item com horario = { dias:[0..6] (0 = domingo), ini:'10:00', fim:'23:30' } só aparece no tablet nesses dias e horas.
+   se o fim for menor que o início (ex.: 18:00 às 02:00), passa da meia-noite e conta como o dia em que começou. */
+const Horario = {
+  DIAS: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+  min(hm) { const m = String(hm || '').match(/^(\d{1,2}):(\d{2})/); return m ? +m[1] * 60 + +m[2] : null; },
+  ok(h, t = Date.now()) {
+    if (!h || !h.on) return true;
+    const d = new Date(t), now = d.getHours() * 60 + d.getMinutes(), dia = d.getDay(), dias = h.dias && h.dias.length ? h.dias : [0, 1, 2, 3, 4, 5, 6];
+    let a = this.min(h.ini), b = this.min(h.fim); if (a == null) a = 0; if (b == null) b = 24 * 60;
+    if (a === b) return dias.includes(dia);
+    if (a < b) return dias.includes(dia) && now >= a && now < b;
+    return (dias.includes(dia) && now >= a) || (dias.includes((dia + 6) % 7) && now < b);
+  },
+  /* item aparece se ele e a categoria dele estiverem no horário */
+  item(i, t) { if (!i) return false; const c = Store.get('categories', i.catId); return this.ok(i.horario, t) && this.ok(c && c.horario, t); },
+  diasTxt(dias) {
+    const d = (dias && dias.length ? dias : [0, 1, 2, 3, 4, 5, 6]).slice().sort((a, b) => a - b);
+    if (d.length === 7) return 'Todos os dias';
+    const ord = [1, 2, 3, 4, 5, 6, 0].filter(x => d.includes(x));
+    const seq = [1, 2, 3, 4, 5, 6, 0]; const i0 = seq.indexOf(ord[0]);
+    if (ord.length > 2 && ord.every((x, k) => seq[i0 + k] === x)) return `${this.DIAS[ord[0]]} a ${this.DIAS[ord[ord.length - 1]]}`;
+    return ord.map(x => this.DIAS[x]).join(', ');
+  },
+  txt(h) { if (!h || !h.on) return ''; return `${this.diasTxt(h.dias)} · ${h.ini || '00:00'} às ${h.fim || '24:00'}`; },
+  /* muda quando algum item ou categoria entra ou sai do horário (o tablet redesenha sozinho) */
+  sig(t) { return Store.all('categories').filter(c => c.horario && c.horario.on && !this.ok(c.horario, t)).map(c => c.id).concat(Store.all('items').filter(i => i.horario && i.horario.on && !this.ok(i.horario, t)).map(i => i.id)).join(','); }
+};
 
 /* ======================= LOJAS ======================= */
 /* cada aparelho pertence a uma loja; pedidos, comandas, impressões, caixa e equipe ficam separados por loja.
@@ -1282,7 +1312,7 @@ function seedDemo(S) {
     ['lanches', 'Lanches', 'Lanches', 'POS'], ['dogs', 'Dogs', 'Lanches', 'POS'], ['gourmet', 'Gourmet', 'Lanches', 'POS'], ['maionese', 'Maionese caseira', 'Lanches', 'EPSON'],
     ['sobremesa', 'Sobremesas', 'Sobremesas', 'POS'], ['acai', 'Açaí', 'Sobremesas', 'POS'], ['picoles', 'Picolés', 'Sobremesas', 'EPSON'], ['doces', 'Doces', 'Sobremesas', 'EPSON'],
     ['bebidas', 'Bebidas', 'Bebidas', 'EPSON'], ['saladas', 'Saladas', 'Salada', 'POS']];
-  cats.forEach((c, i) => put('categories', c[0], { name: c[1], menu: c[2], printer: c[3], order: i, visible: true }));
+  cats.forEach((c, i) => put('categories', c[0], Object.assign({ name: c[1], menu: c[2], printer: c[3], order: i, visible: true }, c[0] === 'aminuta' ? { horario: { on: true, dias: [2, 3, 4, 5, 6], ini: '10:00', fim: '23:30' } } : {})));
   const GR = {"REM_XIS": {"id": "g_rem_xis", "name": "Sem algum ingrediente", "kind": "remove", "min": 0, "max": 12, "options": [{"name": "Maionese", "price": 0}, {"name": "Ketchup", "price": 0}, {"name": "Mostarda", "price": 0}, {"name": "Milho", "price": 0}, {"name": "Ervilha", "price": 0}, {"name": "Alface", "price": 0}, {"name": "Tomate", "price": 0}, {"name": "Queijo", "price": 0}, {"name": "Ovo", "price": 0}, {"name": "Bife artesanal", "price": 0}]}, "REM_XIS_F": {"id": "g_rem_xisf", "name": "Sem algum ingrediente", "kind": "remove", "min": 0, "max": 11, "options": [{"name": "Maionese", "price": 0}, {"name": "Ketchup", "price": 0}, {"name": "Mostarda", "price": 0}, {"name": "Milho", "price": 0}, {"name": "Ervilha", "price": 0}, {"name": "Alface", "price": 0}, {"name": "Tomate", "price": 0}, {"name": "Queijo", "price": 0}, {"name": "Ovo", "price": 0}]}, "ADD_XIS": {"id": "g_add_xis", "name": "Turbine seu lanche", "kind": "add", "min": 0, "max": 10, "options": [{"name": "Cheddar", "price": 5}, {"name": "Ovo", "price": 3}, {"name": "Frango", "price": 8}, {"name": "Bife extra hambúrguer", "price": 8}, {"name": "Maionese extra 100 g", "price": 2}, {"name": "Bacon", "price": 8}, {"name": "Cebola", "price": 3}, {"name": "Calabresa", "price": 8}, {"name": "Queijo", "price": 3}, {"name": "Coração", "price": 8}, {"name": "Catupiry", "price": 8}, {"name": "Batata palha", "price": 3}]}, "REM_DOG": {"id": "g_rem_dog", "name": "Sem algum ingrediente", "kind": "remove", "min": 0, "max": 7, "options": [{"name": "Maionese", "price": 0}, {"name": "Ketchup", "price": 0}, {"name": "Mostarda", "price": 0}, {"name": "Milho", "price": 0}, {"name": "Ervilha", "price": 0}, {"name": "Molho de panela", "price": 0}, {"name": "Batata palha", "price": 0}, {"name": "Salsicha", "price": 0}]}, "EXTRA_DOG": {"id": "g_extra_dog", "name": "Turbine seu lanche", "kind": "add", "min": 0, "max": 3, "options": [{"name": "Bacon extra", "price": 7}, {"name": "Cebola na chapa", "price": 3}, {"name": "Fatia de queijo", "price": 3}, {"name": "Cheddar", "price": 5}, {"name": "Catupiry", "price": 7}]}, "REM_STROG": {"id": "g_rem_strog", "name": "Retire do seu prato", "kind": "remove", "min": 0, "max": 3, "options": [{"name": "Batata palha", "price": 0}, {"name": "Arroz", "price": 0}, {"name": "Tomate", "price": 0}, {"name": "Alface", "price": 0}]}, "ADD_PF": {"id": "g_add_pf", "name": "Adicional à la minuta", "kind": "add", "min": 0, "max": 6, "options": [{"name": "Cebola na chapa", "price": 3}, {"name": "Queijo", "price": 3}, {"name": "Ovo", "price": 3}, {"name": "Proteína extra (a mesma do prato)", "price": 8}, {"name": "Feijão", "price": 4}, {"name": "Salada", "price": 3}, {"name": "Batata", "price": 8}]}, "ADD_PF2": {"id": "g_add_pf2", "name": "Adicional à la minuta", "kind": "add", "min": 0, "max": 7, "options": [{"name": "Cebola na chapa", "price": 3}, {"name": "Fatia de queijo", "price": 3}, {"name": "Ovo extra", "price": 3}, {"name": "Proteína extra (a mesma do prato)", "price": 10}, {"name": "Feijão", "price": 4}, {"name": "Arroz", "price": 4}, {"name": "Salada", "price": 3}, {"name": "Batata frita", "price": 8}]}, "DD_SABOR": {"id": "g_dd_sabor", "name": "Escolha o sabor", "kind": "choice", "min": 1, "max": 1, "options": [{"name": "Chocolate ao leite", "price": 0}, {"name": "Chocolate branco", "price": 0}]}, "DD_COMP": {"id": "g_dd_comp", "name": "Escolha o complemento", "kind": "add", "min": 0, "max": 1, "options": [{"name": "Banana", "price": 0}, {"name": "Coco ralado", "price": 0}, {"name": "M&M", "price": 0}]}, "TURB_MINI": {"id": "g_turb_mini", "name": "Turbine sua batatinha", "kind": "add", "min": 0, "max": 3, "options": [{"name": "Fatia de queijo", "price": 3}, {"name": "Cheddar", "price": 6}, {"name": "Bacon", "price": 8}, {"name": "Catupiry", "price": 8}]}, "TURB_BAT": {"id": "g_turb_bat", "name": "Turbine sua batata", "kind": "add", "min": 0, "max": 2, "options": [{"name": "Cheddar", "price": 9}]}, "COMP_POR": {"id": "g_comp_por", "name": "Complemente seu pedido", "kind": "add", "min": 0, "max": 6, "options": [{"name": "Pão extra com queijo e maionese", "price": 8}, {"name": "Cheddar", "price": 6}, {"name": "Fatia de queijo", "price": 3}]}, "REM_KACH": {"id": "g_rem_kach", "name": "Sem algum ingrediente", "kind": "remove", "min": 0, "max": 7, "options": [{"name": "Maionese", "price": 0}, {"name": "Ketchup", "price": 0}, {"name": "Mostarda", "price": 0}, {"name": "Alface", "price": 0}, {"name": "Tomate", "price": 0}, {"name": "Queijo", "price": 0}, {"name": "Calabresa", "price": 0}, {"name": "Coração", "price": 0}, {"name": "Frango", "price": 0}]}, "ADD_KACH": {"id": "g_add_kach", "name": "Turbine seu lanche", "kind": "add", "min": 0, "max": 4, "options": [{"name": "Cebola na chapa", "price": 3}, {"name": "Queijo", "price": 3}, {"name": "Cheddar", "price": 5}, {"name": "Catupiry", "price": 7}]}, "REM_KIDS": {"id": "g_rem_kids", "name": "Sem algum ingrediente", "kind": "remove", "min": 0, "max": 2, "options": [{"name": "Maionese", "price": 0}, {"name": "Queijo", "price": 0}]}, "BEB_KIDS": {"id": "g_beb_kids", "name": "Escolha sua bebida", "kind": "choice", "min": 1, "max": 1, "options": [{"name": "Mini Coca", "price": 0}, {"name": "Água sem gás", "price": 0}]}, "COMBO1": {"id": "g_combo1", "name": "1º Xis Salada: sem algum ingrediente", "kind": "remove", "min": 0, "max": 10, "options": [{"name": "Maionese", "price": 0}, {"name": "Ketchup", "price": 0}, {"name": "Mostarda", "price": 0}, {"name": "Milho", "price": 0}, {"name": "Ervilha", "price": 0}, {"name": "Tomate", "price": 0}, {"name": "Alface", "price": 0}, {"name": "Queijo", "price": 0}, {"name": "Ovo", "price": 0}, {"name": "Bife", "price": 0}]}, "COMBO2": {"id": "g_combo2", "name": "2º Xis Salada: sem algum ingrediente", "kind": "remove", "min": 0, "max": 10, "options": [{"name": "Maionese", "price": 0}, {"name": "Ketchup", "price": 0}, {"name": "Mostarda", "price": 0}, {"name": "Milho", "price": 0}, {"name": "Ervilha", "price": 0}, {"name": "Alface", "price": 0}, {"name": "Tomate", "price": 0}, {"name": "Queijo", "price": 0}, {"name": "Ovo", "price": 0}, {"name": "Bife", "price": 0}]}, "CHURROS": {"id": "g_churros", "name": "Algum adicional", "kind": "add", "min": 0, "max": 5, "options": [{"name": "Doce de leite extra", "price": 5.9}, {"name": "Chocolate ao leite", "price": 6.9}, {"name": "1 churros extra", "price": 2.9}]}, "ACAI_COMP": {"id": "g_acai_comp", "name": "Complementos", "kind": "add", "min": 0, "max": 3, "options": [{"name": "Leite em pó", "price": 0}, {"name": "Leite condensado", "price": 0}, {"name": "Granola", "price": 0}, {"name": "M&M", "price": 0}, {"name": "Paçoca", "price": 0}]}, "ACAI_ADD": {"id": "g_acai_add", "name": "Adicionais", "kind": "add", "min": 0, "max": 2, "options": [{"name": "Chocolate branco", "price": 3}, {"name": "Chocolate ao leite", "price": 3}]}, "SALADA": {"id": "g_salada", "name": "Complemente sua salada", "kind": "add", "min": 0, "max": 3, "options": [{"name": "Ovo cozido extra", "price": 2}, {"name": "Frango em cubos extra", "price": 8}]}};
   const ITEMS = [
     {"c": "promocao", "n": "Combo com bebida", "d": "Dois Xis Salada + Guaraná lata. Ganha a sacola térmica.", "p": 62, "g": ["COMBO1", "COMBO2"], "f": "-1787877598266blob"},
@@ -1648,11 +1678,12 @@ const Tablet = {
     Store.update('devices', this.deviceId, { kind: 'tablet', mesa: this.mesa, reserva: this.reserva ? this.reserva.nome : null, model, battery, charging, lastSeen: Date.now(), ver: APP_VERSION, online: navigator.onLine }).catch(() => { });
   },
 
-  visibleCats() { return Store.all('categories').filter(c => c.visible !== false && Store.all('items').some(i => i.catId === c.id && i.visible !== false)).sort((a, b) => a.order - b.order); },
-  itemsOf(cid) { return Store.all('items').filter(i => i.catId === cid && i.visible !== false).sort((a, b) => (a.order || 0) - (b.order || 0)); },
+  vis(i) { return !!i && i.visible !== false && Horario.item(i); },
+  visibleCats() { return Store.all('categories').filter(c => c.visible !== false && Horario.ok(c.horario) && Store.all('items').some(i => i.catId === c.id && this.vis(i))).sort((a, b) => a.order - b.order); },
+  itemsOf(cid) { return Store.all('items').filter(i => i.catId === cid && this.vis(i)).sort((a, b) => (a.order || 0) - (b.order || 0)); },
 
   /* só re-desenha o cardápio quando o cardápio, os banners ou as configurações mudam */
-  menuSig() { return ['settings', 'categories', 'items', 'banners'].map(c => Store.ver[c] || 0).join('.') + '|' + this.timedSig(); },
+  menuSig() { return ['settings', 'categories', 'items', 'banners'].map(c => Store.ver[c] || 0).join('.') + '|' + this.timedSig() + '|' + Horario.sig(); },
   render(force) {
     if (!this.root || !$('#t-top')) return;
     const sig = this.menuSig();
@@ -1669,7 +1700,7 @@ const Tablet = {
         <button id="t-cart-top">${ico('cart')}<span>Carrinho<br>de compras</span><b class="badge" id="t-badge" ${n ? '' : 'hidden'}>${n}</b></button>
       </div>`;
     const menus = this.menus();
-    const hasDest = this.banners().length || Store.all('items').some(i => i.recommended && i.visible !== false);
+    const hasDest = this.banners().length || Store.all('items').some(i => i.recommended && this.vis(i));
     if (this.menu === 'destaques' && !hasDest) this.menu = null;
     if (!this.menu || (this.menu !== 'destaques' && !menus.find(m => m.name === this.menu))) this.menu = hasDest ? 'destaques' : (menus[0] && menus[0].name);
     const cur = menus.find(m => m.name === this.menu);
@@ -1699,6 +1730,8 @@ const Tablet = {
   timedSig() { return this.banners().filter(b => b.afterMin).map(b => b.id).join(','); },
   /* a cada 30 s: se um banner programado acabou de liberar e ninguém está mexendo, volta para o Destaques com ele na frente */
   checkTimed() {
+    /* item ou categoria entrou/saiu do horário: redesenha o cardápio (se ninguém estiver com uma janela aberta) */
+    const hs = Horario.sig(); if (hs !== this._horSig) { const first = this._horSig == null; this._horSig = hs; if (!first && !$('.modal-back')) { if (this.cat && !this.visibleCats().some(c => c.id === this.cat)) { this.menu = 'destaques'; this.cat = null; } this.render(); } }
     const sig = this.timedSig(); if (sig === this._timedSig) return;
     const fresh = sig && sig.split(',').some(id => !(this._timedSig || '').split(',').includes(id));
     this._timedSig = sig;
@@ -1711,11 +1744,11 @@ const Tablet = {
     const q = stripAcc(this.query.toLowerCase());
     let html = this.searching ? `<div class="t-search"><input class="input" id="t-q" type="search" placeholder="O que você procura?" value="${esc(this.query)}" aria-label="Buscar no cardápio"><button class="btn" id="t-q-x">${ico('x')} Fechar busca</button></div>` : '';
     if (q) {
-      const found = Store.all('items').filter(i => i.visible !== false && stripAcc((i.name + ' ' + i.desc).toLowerCase()).includes(q));
+      const found = Store.all('items').filter(i => this.vis(i) && stripAcc((i.name + ' ' + i.desc).toLowerCase()).includes(q));
       html += `<section class="t-sec"><h2>Resultado</h2>${found.length ? `<div class="t-grid">${found.map(itemCard).join('')}</div>` : '<p class="muted">Nada encontrado. Tente outra palavra.</p>'}</section>`;
     } else if (this.menu === 'destaques') {
       const bs = this.banners(); this.bIdx = Math.min(this.bIdx || 0, Math.max(0, bs.length - 1));
-      const rec = Store.all('items').filter(i => i.recommended && i.visible !== false).sort((a, b) => (a.available === false) - (b.available === false) || (a.order || 0) - (b.order || 0));
+      const rec = Store.all('items').filter(i => i.recommended && this.vis(i)).sort((a, b) => (a.available === false) - (b.available === false) || (a.order || 0) - (b.order || 0));
       const mv = Store.settings().motion !== false;
       if (bs.length) html += `<section class="t-hero ${mv ? 'moving' : ''}" id="t-hero" aria-roledescription="carrossel" style="--kb:${Math.max(3, Store.settings().bannerSeconds || 6) + 1.5}s">${bs.map((b, i) => `<div class="slide ${i === this.bIdx ? 'on' : ''} kb${i % 4}" data-b="${b.id}" role="group" aria-label="${esc(b.title || 'Destaque')}"><div class="img" style="background-image:url('${esc(b.image)}')"></div>
           ${b.title || b.subtitle ? `<div class="cap">${b.title ? `<h2>${esc(b.title)}</h2>` : ''}${b.subtitle ? `<p>${esc(b.subtitle)}</p>` : ''}</div>` : ''}</div>`).join('')}
@@ -1767,14 +1800,14 @@ const Tablet = {
   },
   async openBanner(id) {
     const b = Store.get('banners', id); if (!b || $('#t-hero')?._swiped) return;
-    if (b.linkType === 'item') { const it = Store.get('items', b.linkId); if (it && it.available !== false && it.visible !== false) await this.addItem(it); }
+    if (b.linkType === 'item') { const it = Store.get('items', b.linkId); if (it && it.available !== false && this.vis(it)) await this.addItem(it); }
     else if (b.linkType === 'pick') { const it = await this.pickItem(b); if (it) await this.addItem(it); }
     else if (b.linkType === 'cat' && Biz.cat(b.linkId)) { const c = Biz.cat(b.linkId); this.menu = c.menu || c.name; this.cat = c.id; this.render(true); }
   },
   /* banner com lista: o cliente escolhe um dos itens (ex.: sabor da caipirinha) */
   pickItem(b) {
     return new Promise(res => {
-      const its = (b.linkIds || []).map(id => Store.get('items', id)).filter(i => i && i.visible !== false);
+      const its = (b.linkIds || []).map(id => Store.get('items', id)).filter(i => this.vis(i));
       if (!its.length) return res(null);
       if (its.length === 1) return res(its[0]);
       let done = false;
@@ -2636,10 +2669,10 @@ const Gestora = {
     }
     pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Cardápio</h1><div class="sub">${Store.all('items').length} itens em ${cats.length} categorias</div></div><button class="btn" id="cat-new">${ico('plus')} Nova categoria</button><button class="btn primary" id="it-new">${ico('plus')} Novo item</button></div>
       <div class="chips">${cats.map(x => `<button data-cf="${x.id}" class="${x.id === this.cf ? 'on' : ''}">${esc(x.name)}${x.visible === false ? ' (oculta)' : ''}</button>`).join('')}</div>
-      ${c ? `<div class="card row"><div class="grow"><h3>${esc(c.name)}</h3><div class="muted small">Menu ${esc(c.menu || '-')} · imprime na <b>${esc(c.printer)}</b> (${esc(Store.base().printerLabels?.[c.printer] || '')}) · ${plural(items.length, 'item', 'itens')}</div></div>
+      ${c ? `<div class="card row"><div class="grow"><h3>${esc(c.name)}</h3><div class="muted small">Menu ${esc(c.menu || '-')} · imprime na <b>${esc(c.printer)}</b> (${esc(Store.base().printerLabels?.[c.printer] || '')}) · ${plural(items.length, 'item', 'itens')}${c.horario && c.horario.on ? ` · <span class="pill ${Horario.ok(c.horario) ? 'warn' : 'bad'}">${esc(Horario.txt(c.horario))}${Horario.ok(c.horario) ? '' : ' · fora do horário agora'}</span>` : ''}</div></div>
         <button class="btn sm" data-ctop title="Categoria para o começo">${ico('up')} Topo</button><button class="btn sm" data-cmv="-1" title="Subir categoria">${ico('up')}</button><button class="btn sm" data-cmv="1" title="Descer categoria">${ico('down')}</button><button class="btn sm" id="cat-ed">${ico('edit')} Editar categoria</button></div>` : ''}
       <div class="table-wrap">${items.map(i => `<div class="menu-item-row"><div class="thumb" ${i.photo ? `style="background-image:url('${esc(i.photo)}')"` : ''}>${i.photo ? '' : esc(initials(i.name))}</div>
-        <div class="info"><b>${esc(i.name)}</b><div class="d">${esc(i.desc || '')}</div><div class="row small" style="gap:6px;margin-top:4px">${(i.groups || []).map(g => `<span class="pill">${esc(g.name)}</span>`).join('')}${i.printer ? `<span class="pill info">imprime na ${esc(i.printer)}</span>` : ''}${Loja.multi() && i.available !== false ? (i.esgLojas || []).filter(id => Loja.cfg(id)).map(id => `<span class="pill bad">esgotado em ${esc(Loja.curto(id))}</span>`).join('') : ''}</div></div>
+        <div class="info"><b>${esc(i.name)}</b><div class="d">${esc(i.desc || '')}</div><div class="row small" style="gap:6px;margin-top:4px">${(i.groups || []).map(g => `<span class="pill">${esc(g.name)}</span>`).join('')}${i.printer ? `<span class="pill info">imprime na ${esc(i.printer)}</span>` : ''}${i.horario && i.horario.on ? `<span class="pill ${Horario.ok(i.horario) ? 'warn' : 'bad'}">${ico('clock')} ${esc(Horario.txt(i.horario))}${Horario.ok(i.horario) ? '' : ' · fora do horário agora'}</span>` : ''}${Loja.multi() && i.available !== false ? (i.esgLojas || []).filter(id => Loja.cfg(id)).map(id => `<span class="pill bad">esgotado em ${esc(Loja.curto(id))}</span>`).join('') : ''}</div></div>
         <b class="num" style="white-space:nowrap">${brl(i.price)}</b>
         <div class="col" style="gap:4px;align-items:flex-end"><button class="pill ${i.visible !== false ? 'ok' : 'bad'}" data-tg="visible|${i.id}" style="border:0">${i.visible !== false ? 'Visível' : 'Invisível'}</button><button class="pill ${i.available !== false ? 'ok' : 'bad'}" data-tg="available|${i.id}" style="border:0">${i.available !== false ? 'Disponível' : 'Esgotado'}</button><button class="pill ${i.recommended ? 'warn' : ''}" data-tg="recommended|${i.id}" style="border:0">${i.recommended ? 'Recomendado' : 'Recomendar'}</button></div>
         <div class="row" style="gap:2px"><button class="icon-btn" data-itop="${i.id}" aria-label="Mover para o topo" title="Mover para o topo">${ico('up')}${ico('up')}</button><button class="icon-btn" data-imv="${i.id}|-1" aria-label="Subir" title="Subir">${ico('up')}</button><button class="icon-btn" data-imv="${i.id}|1" aria-label="Descer" title="Descer">${ico('down')}</button><button class="icon-btn" data-ed="${i.id}" aria-label="Editar">${ico('edit')}</button><button class="icon-btn" data-dup="${i.id}" aria-label="Duplicar">${ico('copy')}</button><button class="icon-btn" data-del="${i.id}" aria-label="Excluir" style="color:var(--bad)">${ico('trash')}</button></div></div>`).join('') || '<div class="empty">Nenhum item nesta categoria.</div>'}</div>`;
@@ -2658,25 +2691,43 @@ const Gestora = {
     $('#cat-new', pg).onclick = () => this.editCat({ name: '', menu: '', printer: 'POS', visible: true, order: cats.length });
     const ce = $('#cat-ed', pg); if (ce) ce.onclick = () => this.editCat(c);
   },
+  /* bloco "Mostrar só em alguns dias e horários" (categoria e item) */
+  horarioHtml(h) {
+    h = Object.assign({ on: false, dias: [1, 2, 3, 4, 5, 6, 0], ini: '10:00', fim: '23:30' }, h || {});
+    return `<div class="card col hz" style="padding:14px;gap:10px"><label class="row"><span class="switch"><input type="checkbox" class="hz-on" ${h.on ? 'checked' : ''}><i></i></span> <b>Mostrar no tablet só em alguns dias e horários</b></label>
+      <div class="hz-body col" style="gap:10px;${h.on ? '' : 'display:none'}"><div class="chips hz-dias">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button type="button" data-hd="${d}" class="${h.dias.includes(d) ? 'on' : ''}">${Horario.DIAS[d]}</button>`).join('')}</div>
+      <div class="row"><label class="field"><span>Das</span><input class="input num hz-ini" type="time" value="${esc(h.ini)}" style="width:130px"></label><label class="field"><span>Até</span><input class="input num hz-fim" type="time" value="${esc(h.fim)}" style="width:130px"></label><span class="muted small grow" style="align-self:flex-end">Fora disso some do tablet sozinho e volta na hora certa. O caixa continua podendo lançar.</span></div></div></div>`;
+  },
+  horarioWire(el) {
+    const box = $('.hz', el); if (!box) return;
+    $('.hz-on', box).onchange = e => { $('.hz-body', box).style.display = e.target.checked ? '' : 'none'; };
+    $$('[data-hd]', box).forEach(b => b.onclick = () => b.classList.toggle('on'));
+  },
+  horarioRead(el) {
+    const box = $('.hz', el); if (!box) return null;
+    const dias = $$('[data-hd].on', box).map(b => +b.dataset.hd);
+    return { on: $('.hz-on', box).checked, dias, ini: $('.hz-ini', box).value || '00:00', fim: $('.hz-fim', box).value || '23:59' };
+  },
   editCat(c) {
     const s = Store.settings(); const isNew = !c.id;
     const m = modal({ title: isNew ? 'Nova categoria' : 'Editar categoria', body: `<label class="field"><span>Nome</span><input class="input" id="ec-n" value="${esc(c.name)}"></label><label class="field"><span>Menu (agrupamento)</span><input class="input" id="ec-m" value="${esc(c.menu || '')}" placeholder="Ex.: Lanches"></label>
       <label class="field"><span>Imprime na</span><select class="input" id="ec-p">${Store.base().printers.map(p => `<option value="${p}" ${c.printer === p ? 'selected' : ''}>${p} (${esc(Store.base().printerLabels?.[p] || '')})</option>`).join('')}</select></label>
-      <label class="row"><span class="switch"><input type="checkbox" id="ec-v" ${c.visible !== false ? 'checked' : ''}><i></i></span> Visível no tablet</label>`,
+      <label class="row"><span class="switch"><input type="checkbox" id="ec-v" ${c.visible !== false ? 'checked' : ''}><i></i></span> Visível no tablet</label>${this.horarioHtml(c.horario)}`,
       foot: `${isNew ? '' : '<button class="btn danger" id="ec-del">Excluir</button><span class="spacer"></span>'}<button class="btn" data-x>Cancelar</button><button class="btn primary" id="ec-ok">Salvar</button>` });
-    $('#ec-ok', m.el).onclick = async () => { const d = Object.assign({}, c, { name: $('#ec-n', m.el).value.trim(), menu: $('#ec-m', m.el).value.trim(), printer: $('#ec-p', m.el).value, visible: $('#ec-v', m.el).checked }); if (!d.name) return toast('Dê um nome à categoria', 'bad'); const id = await Store.add('categories', d); this.cf = id; m.close(); toast('Categoria salva'); };
+    $('#ec-ok', m.el).onclick = async () => { const d = Object.assign({}, c, { name: $('#ec-n', m.el).value.trim(), menu: $('#ec-m', m.el).value.trim(), printer: $('#ec-p', m.el).value, visible: $('#ec-v', m.el).checked, horario: this.horarioRead(m.el) }); if (!d.name) return toast('Dê um nome à categoria', 'bad'); if (d.horario.on && !d.horario.dias.length) return toast('Escolha pelo menos um dia', 'bad'); const id = await Store.add('categories', d); this.cf = id; m.close(); toast('Categoria salva'); };
+    this.horarioWire(m.el);
     const del = $('#ec-del', m.el); if (del) del.onclick = async () => { if (Store.all('items').some(i => i.catId === c.id)) return toast('Mova ou exclua os itens desta categoria antes', 'bad'); await Store.del('categories', c.id); this.cf = null; m.close(); };
   },
   editItem(item) {
     const s = Store.settings(); const it = JSON.parse(JSON.stringify(item)); it.groups = it.groups || [];
     this.editing = true;
     const m = modal({ title: it.id ? 'Editar item' : 'Novo item', wide: true, body: '', foot: `<button class="btn" data-x>Cancelar</button><button class="btn primary" id="ei-ok">Salvar item</button>`, onClose: () => { this.editing = false; this.render(); } });
-    const read = () => { const g = id => $(id, m.el); if (!g('#ei-n')) return; it.name = g('#ei-n').value.trim(); it.desc = g('#ei-d').value.trim(); it.price = num(g('#ei-p').value); it.catId = g('#ei-c').value; it.printer = g('#ei-pr').value; it.photoFit = g('#ei-fit').checked ? 'contain' : ''; };
+    const read = () => { const g = id => $(id, m.el); if (!g('#ei-n')) return; it.name = g('#ei-n').value.trim(); it.desc = g('#ei-d').value.trim(); it.price = num(g('#ei-p').value); it.catId = g('#ei-c').value; it.printer = g('#ei-pr').value; it.photoFit = g('#ei-fit').checked ? 'contain' : ''; const hz = this.horarioRead(m.el); if (hz) it.horario = hz; };
     const draw = () => {
       $('.body', m.el).innerHTML = `<div class="grid-2"><div class="col"><label class="field"><span>Nome</span><input class="input" id="ei-n" value="${esc(it.name)}"></label><label class="field"><span>Descrição</span><textarea class="input" id="ei-d">${esc(it.desc || '')}</textarea></label>
         <div class="row"><label class="field grow"><span>Preço (R$)</span><input class="input num" id="ei-p" inputmode="decimal" value="${money(it.price)}"></label><label class="field grow"><span>Categoria</span><select class="input" id="ei-c">${Store.all('categories').sort((a, b) => a.order - b.order).map(c => `<option value="${c.id}" ${c.id === it.catId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label></div>
         <label class="row small"><input type="checkbox" id="ei-fit" ${it.photoFit === 'contain' ? 'checked' : ''}> Mostrar a foto inteira (bom para latas e garrafas)</label>
-        <label class="field"><span>Imprime na</span><select class="input" id="ei-pr"><option value="">Mesma da categoria</option>${Store.base().printers.map(p => `<option value="${p}" ${it.printer === p ? 'selected' : ''}>${p} (${esc(Store.base().printerLabels?.[p] || '')})</option>`).join('')}</select></label></div>
+        <label class="field"><span>Imprime na</span><select class="input" id="ei-pr"><option value="">Mesma da categoria</option>${Store.base().printers.map(p => `<option value="${p}" ${it.printer === p ? 'selected' : ''}>${p} (${esc(Store.base().printerLabels?.[p] || '')})</option>`).join('')}</select></label>${this.horarioHtml(it.horario)}</div>
         <div class="col"><span class="label">Foto</span><div style="aspect-ratio:16/10;max-width:100%;border-radius:10px;background:var(--surface-2) center/cover ${it.photo ? `url('${esc(it.photo)}')` : ''};display:grid;place-items:center" class="muted">${it.photo ? '' : 'Sem foto'}</div>
         <div class="row"><label class="btn sm">${ico('camera')} Escolher foto<input type="file" accept="image/*" id="ei-f" hidden></label>${it.photo ? '<button class="btn sm" id="ei-fx">Remover foto</button>' : ''}</div></div></div>
         <div class="row"><h3 class="grow">Opções do item</h3><select class="input" id="ei-tpl" style="width:auto"><option value="">Copiar opções de outro item…</option>${Store.all('items').filter(x => (x.groups || []).length && x.id !== it.id).map(x => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><button class="btn sm" id="ei-ga">${ico('plus')} Grupo</button></div>
@@ -2684,6 +2735,7 @@ const Gestora = {
           <label class="row small" style="gap:4px">até <input class="input num" data-gm="${gi}" style="width:56px" value="${g.max}"></label><button class="icon-btn" data-gd="${gi}" aria-label="Excluir grupo" style="color:var(--bad)">${ico('trash')}</button></div>
           ${g.options.map((o, oi) => `<div class="row"><input class="input grow" data-on="${gi}|${oi}" value="${esc(o.name)}" placeholder="Opção">${g.kind === 'remove' ? '' : `<input class="input num" data-op="${gi}|${oi}" style="width:100px" value="${money(o.price)}" inputmode="decimal">`}<button class="icon-btn" data-od="${gi}|${oi}" aria-label="Excluir opção">${ico('x')}</button></div>`).join('')}
           <button class="btn sm" data-oa="${gi}" style="align-self:flex-start">${ico('plus')} Opção</button></div>`).join('') || '<p class="muted" style="margin:0">Sem opções. Use "Grupo" para criar adicionais, retirada de ingredientes ou escolha de sabor.</p>'}`;
+      this.horarioWire(m.el);
       const f = $('#ei-f', m.el); f.onchange = async () => { if (!f.files[0]) return; read(); it.photo = await resizeImage(f.files[0], 640); draw(); };
       const fx = $('#ei-fx', m.el); if (fx) fx.onclick = () => { read(); it.photo = ''; draw(); };
       $('#ei-tpl', m.el).onchange = e => { const src = Store.get('items', e.target.value); if (src) { read(); it.groups = JSON.parse(JSON.stringify(src.groups)).map(g => Object.assign(g, { id: 'g' + uid() })); draw(); } };
@@ -2701,7 +2753,7 @@ const Gestora = {
       draw();
     });
     $('#ei-ok', m.el).onclick = async () => {
-      read(); if (!it.name) return toast('Dê um nome ao item', 'bad');
+      read(); if (!it.name) return toast('Dê um nome ao item', 'bad'); if (it.horario && it.horario.on && !it.horario.dias.length) return toast('Escolha pelo menos um dia', 'bad');
       it.groups = it.groups.map(g => Object.assign(g, { options: g.options.filter(o => o.name.trim()) })).filter(g => g.options.length);
       await Store.add('items', it); this.cf = it.catId; m.close(); toast('Item salvo');
     };
