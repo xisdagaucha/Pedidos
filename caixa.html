@@ -587,6 +587,19 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .tab-card.bad{border-color:var(--bad)}
 .tab-card.bad .tc-bat i{background:var(--bad)}
 .tab-card.off{opacity:.65}
+.ct-list{display:flex;flex-direction:column;gap:8px}
+.ct-row{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.ct-row.open{border-color:var(--accent)}
+.ct-row.cn{opacity:.8}
+.ct-head{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;flex-wrap:wrap}
+.ct-head:hover{background:var(--surface-2)}
+.ct-h{font-weight:700;min-width:46px}
+.ct-l{min-width:180px}
+.ct-v{font-size:17px;min-width:90px;text-align:right}
+.ct-body{border-top:1px dashed var(--line);padding:10px 14px 14px;display:flex;flex-direction:column;gap:10px;background:var(--surface-2)}
+.ct-body .t{background:var(--surface)}
+.ct-cancel td{color:var(--bad)}
+.ct-tot{max-width:340px;margin-left:auto;width:100%}
 </style>
 <script src="config.js"></script>
 <script>window.PEDIDOX_ROLE = "caixa";</script>
@@ -609,7 +622,7 @@ const LOGO_FAVICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYA
 
 /* ===================== Pedido X — núcleo ===================== */
 'use strict';
-const APP_VERSION = '2.6.1';
+const APP_VERSION = '2.7.0';
 
 /* ---------- utilitários ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -855,6 +868,35 @@ const Horario = {
   txt(h) { if (!h || !h.on) return ''; return `${this.diasTxt(h.dias)} · ${h.ini || '00:00'} às ${h.fim || '24:00'}`; },
   /* muda quando algum item ou categoria entra ou sai do horário (o tablet redesenha sozinho) */
   sig(t) { return Store.all('categories').filter(c => c.horario && c.horario.on && !this.ok(c.horario, t)).map(c => c.id).concat(Store.all('items').filter(i => i.horario && i.horario.on && !this.ok(i.horario, t)).map(i => i.id)).join(','); }
+};
+
+/* ======================= CONTAS FECHADAS (lista do fechamento) ======================= */
+/* lista do último ao primeiro: comanda, mesa, hora, total, forma de pagamento e cancelamentos; abre para ver o que foi consumido */
+const Contas = {
+  open: new Set(),
+  linhas(t, orders) { return orders.filter(o => o.ticketId === t.id).sort((a, b) => a.at - b.at).flatMap(o => o.items.map(l => Object.assign({}, l, { at: o.at, origin: o.origin, by: o.by }))); },
+  html(ts, orders, { reprint = false, limite = 300 } = {}) {
+    ts = ts.slice().sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0));
+    const fech = ts.filter(t => t.status === 'fechada'), canc = ts.filter(t => t.status === 'cancelada');
+    const fat = round2(fech.reduce((a, t) => a + (t.total || 0), 0));
+    const pay = {}; fech.forEach(t => (t.payments || []).forEach(p => pay[p.method] = round2((pay[p.method] || 0) + p.value)));
+    fech.forEach(t => { if (t.change && pay['Dinheiro']) pay['Dinheiro'] = round2(pay['Dinheiro'] - t.change); });
+    const info = {}; let itensCanc = 0, valorCanc = 0;
+    ts.forEach(t => { const ls = this.linhas(t, orders), c = ls.filter(l => l.canceled); info[t.id] = { ls, c, vc: round2(c.reduce((a, l) => a + Biz.lineTotal(l), 0)) }; itensCanc += c.reduce((a, l) => a + l.qty, 0); valorCanc = round2(valorCanc + info[t.id].vc); });
+    const lbl = t => t.kind === 'balcao' ? Biz.ticketLabel(t) : `<b>Comanda ${esc(String(t.comanda))}</b>${t.mesa ? ` <span class="muted">·</span> Mesa ${esc(String(t.mesa))}` : ''}`;
+    return `<div class="kpis"><div class="kpi"><span class="label">Faturado</span><span class="v">${brl(fat)}</span></div><div class="kpi"><span class="label">Contas fechadas</span><span class="v">${fech.length}</span><span class="d">ticket médio ${brl(fech.length ? fat / fech.length : 0)}</span></div><div class="kpi"><span class="label">Cancelamentos</span><span class="v">${itensCanc + canc.length}</span><span class="d">${itensCanc ? plural(itensCanc, 'item', 'itens') + ' · ' + brl(valorCanc) : ''}${canc.length ? (itensCanc ? ' · ' : '') + plural(canc.length, 'conta cancelada', 'contas canceladas') : ''}${!itensCanc && !canc.length ? 'nenhum' : ''}</span></div></div>
+      ${Object.keys(pay).length ? `<div class="chips">${Object.entries(pay).sort((a, b) => b[1] - a[1]).map(([m, v]) => `<span class="pill" style="font-size:14px;padding:6px 12px">${esc(m)} <b>${brl(v)}</b></span>`).join('')}</div>` : ''}
+      <div class="ct-list">${ts.slice(0, limite).map(t => { const I = info[t.id], aberto = this.open.has(t.id), cn = t.status === 'cancelada';
+        return `<div class="ct-row ${aberto ? 'open' : ''} ${cn ? 'cn' : ''}"><div class="ct-head" data-ct="${t.id}"><span class="num ct-h">${fmtTime(t.closedAt)}</span><span class="ct-l grow">${lbl(t)}<span class="muted small"> · aberta ${fmtTime(t.openedAt)}${t.closedBy ? ' · fechou ' + esc(t.closedBy) : ''}</span></span>
+          ${cn ? '<span class="pill bad">conta cancelada</span>' : (t.payments || []).map(p => `<span class="pill">${esc(p.method)} ${brl(p.value)}</span>`).join('')}
+          ${I.c.length ? `<span class="pill bad">${plural(I.c.reduce((a, l) => a + l.qty, 0), 'cancelado', 'cancelados')} ${brl(I.vc)}</span>` : ''}${t.discount ? `<span class="pill warn">desconto ${brl(t.discount)}</span>` : ''}
+          <b class="num ct-v">${brl(t.total || 0)}</b><span class="pr-chev">${ico(aberto ? 'up' : 'down')}</span></div>
+          ${aberto ? `<div class="ct-body">${I.ls.length ? `<table class="t"><tbody>${I.ls.map(l => `<tr class="${l.canceled ? 'ct-cancel' : ''}"><td class="num">${l.qty}x</td><td>${esc(l.name)}${(l.opts || []).length ? `<div class="muted small">${l.opts.map(o => esc(optTxt(o))).join(', ')}</div>` : ''}${l.obs ? `<div class="muted small">obs: ${esc(l.obs)}</div>` : ''}${l.canceled ? `<div class="small" style="color:var(--bad)">cancelado${l.canceledBy ? ' por ' + esc(l.canceledBy) : ''}${l.canceledAt ? ' às ' + fmtTime(l.canceledAt) : ''}</div>` : ''}</td><td class="small muted">${fmtTime(l.at)}${l.origin ? ' · ' + esc(l.origin) : ''}${l.by ? ' · ' + esc(l.by) : ''}</td><td class="r num">${l.canceled ? '<s>' + brl(Biz.lineTotal(l)) + '</s>' : brl(Biz.lineTotal(l))}</td></tr>`).join('')}</tbody></table>` : (t.summary || []).length ? `<table class="t"><tbody>${t.summary.map(x => `<tr><td class="num">${x.qty}x</td><td>${esc(x.name)}</td><td class="r num">${brl(x.total)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted small" style="margin:0">Os itens desta conta não estão mais disponíveis aqui.</p>'}
+            <div class="ct-tot">${t.subtotal != null ? `<div class="kv"><span>Subtotal</span><b>${brl(t.subtotal)}</b></div>` : ''}${t.serviceFee ? `<div class="kv"><span>Taxa de serviço</span><b>${brl(t.serviceFee)}</b></div>` : ''}${t.discount ? `<div class="kv"><span>Desconto</span><b>-${brl(t.discount)}</b></div>` : ''}<div class="kv"><span><b>Total</b></span><b>${brl(t.total || 0)}</b></div>${(t.payments || []).map(p => `<div class="kv"><span>${esc(p.method)}</span><span>${brl(p.value)}</span></div>`).join('')}${t.change ? `<div class="kv"><span>Troco</span><span>${brl(t.change)}</span></div>` : ''}</div>
+            ${reprint && !cn ? `<button class="btn sm" data-rpt="${t.id}" style="align-self:flex-start">${ico('printer')} Reimprimir</button>` : ''}</div>` : ''}</div>`; }).join('') || '<div class="empty">Nenhuma conta fechada neste período.</div>'}</div>
+      ${ts.length > limite ? `<p class="muted small">Mostrando as ${limite} mais recentes de ${ts.length}.</p>` : ''}`;
+  },
+  wire(el, rerender) { $$('[data-ct]', el).forEach(h => h.onclick = e => { if (e.target.closest('button')) return; const id = h.dataset.ct; this.open.has(id) ? this.open.delete(id) : this.open.add(id); rerender(); }); },
 };
 
 /* ======================= LOJAS ======================= */
@@ -2549,13 +2591,10 @@ const PDV = {
   },
 
   closedTodayHtml() {
-    const list = Store.all('tickets').filter(t => t.status === 'fechada' && t.closedAt >= dayStart()).sort((a, b) => b.closedAt - a.closedAt);
-    return `<div class="card col" style="margin-top:16px"><h3>Contas fechadas hoje</h3><p class="muted" style="margin:0">Reimprima a comanda com a forma de pagamento, escolhendo a impressora.</p>
-      ${list.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Mesa / comanda</th><th>Hora</th><th>Pagamento</th><th class="r">Total</th><th></th></tr></thead><tbody>
-      ${list.map(t => `<tr><td><b>${esc(Biz.ticketLabel(t))}</b></td><td class="num">${fmtTime(t.closedAt)}</td><td class="small">${esc((t.payments || []).map(p => p.method + ' ' + brl(p.value)).join(' + ') || '—')}</td><td class="r num">${brl(t.total)}</td><td class="r"><button class="btn sm" data-rpt="${t.id}">${ico('printer')} Reimprimir</button></td></tr>`).join('')}
-      </tbody></table></div>` : '<p class="muted small" style="margin:0">Nenhuma conta fechada hoje.</p>'}</div>`;
+    const ts = Store.all('tickets').filter(t => (t.status === 'fechada' || t.status === 'cancelada') && t.closedAt >= dayStart());
+    return `<div class="card col" style="margin-top:16px"><h3>Contas fechadas hoje</h3><p class="muted" style="margin:0">Da última para a primeira. Toque numa conta para ver o que foi consumido, os cancelamentos e reimprimir.</p>${Contas.html(ts, Store.all('orders'), { reprint: true })}</div>`;
   },
-  wireClosedToday(pg) { $$('[data-rpt]', pg).forEach(b => b.onclick = () => this.reprintTicket(b.dataset.rpt)); },
+  wireClosedToday(pg) { Contas.wire(pg, () => this.render()); $$('[data-rpt]', pg).forEach(b => b.onclick = () => this.reprintTicket(b.dataset.rpt)); },
 
   /* resumo de um caixa: contas, formas de pagamento, retiradas e reforços */
   caixaResumo(cx) {
@@ -2694,7 +2733,7 @@ const Gestora = {
       $('#g-in').onclick = async () => { const ok = await askPin({ title: 'PIN de gestora', check: p => Codes.gestora(p) }); if (ok) { this.unlocked = true; this.render(); } };
       return;
     }
-    const nav = [['inicio', 'home', 'Início'], ['analises', 'chart', 'Análises'], ['pesquisa', 'smile', 'Pesquisa de satisfação'], ['movs', 'list', 'Movimentações'], ['consumo', 'receipt', 'Consumo da equipe'], null, ['cardapio', 'menu', 'Cardápio'], ['destaques', 'star', 'Destaques do tablet'], ['mesas', 'qr', 'Mesas e comandas'], ['equipe', 'users', 'Equipe'], ['dispositivos', 'tablet', 'Dispositivos'], ['config', 'gear', 'Configurações']];
+    const nav = [['inicio', 'home', 'Início'], ['analises', 'chart', 'Análises'], ['pesquisa', 'smile', 'Pesquisa de satisfação'], ['contas', 'receipt', 'Contas e fechamento'], ['movs', 'list', 'Movimentações'], ['consumo', 'receipt', 'Consumo da equipe'], null, ['cardapio', 'menu', 'Cardápio'], ['destaques', 'star', 'Destaques do tablet'], ['mesas', 'qr', 'Mesas e comandas'], ['equipe', 'users', 'Equipe'], ['dispositivos', 'tablet', 'Dispositivos'], ['config', 'gear', 'Configurações']];
     const scroll = $('.main', this.root)?.scrollTop || 0;
     this.root.innerHTML = `<div class="shell"><aside class="side"><div class="brand"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span class="name">Gestora<small>${esc(Loja.all() ? 'Todas as lojas' : Loja.nome())}</small></span></div>
       ${nav.map(n => n ? `<button class="nav ${this.view === n[0] ? 'on' : ''}" data-nav="${n[0]}">${ico(n[1])} ${n[2]}</button>` : '<div class="sep"></div>').join('')}
@@ -2705,7 +2744,7 @@ const Gestora = {
     $$('[data-lj]', this.root).forEach(b => b.onclick = () => { Loja.set(b.dataset.lj); this._memo = {}; this.render(); });
     $('#g-lock', this.root).onclick = () => { this.unlocked = false; this.render(); };
     const pg = $('#pg', this.root);
-    const fn = { inicio: this.vInicio, analises: this.vAnalises, pesquisa: this.vPesquisa, movs: this.vMovs, consumo: function (pg) { return Equipe.gestoraPage(pg, this); }, cardapio: this.vCardapio, destaques: this.vBanners, mesas: this.vMesas, equipe: this.vEquipe, dispositivos: this.vDisp, config: this.vConfig }[this.view];
+    const fn = { inicio: this.vInicio, analises: this.vAnalises, pesquisa: this.vPesquisa, movs: this.vMovs, contas: this.vContas, consumo: function (pg) { return Equipe.gestoraPage(pg, this); }, cardapio: this.vCardapio, destaques: this.vBanners, mesas: this.vMesas, equipe: this.vEquipe, dispositivos: this.vDisp, config: this.vConfig }[this.view];
     await fn.call(this, pg);
     const mn = $('.main', this.root); if (mn) mn.scrollTop = scroll;
   },
@@ -2757,6 +2796,16 @@ const Gestora = {
     const tot = rows.reduce((a, r) => a + r.v, 0) || 1;
     return `<div class="card"><div class="panel-title"><h3 class="grow">Por loja</h3><span class="muted small">${lbl}</span></div><div class="table-wrap"><table class="t"><thead><tr><th>Loja</th><th class="r">Faturamento</th><th>Participação</th><th class="r">Contas</th><th class="r">Ticket médio</th><th class="r">Mesas abertas agora</th></tr></thead><tbody>
       ${rows.map(r => `<tr><td><b>${esc(r.l.nome)}</b></td><td class="r num">${brl(r.v)}</td><td style="min-width:140px"><div class="bar-h"><div class="track"><div class="fill" style="width:${r.v / tot * 100}%"></div></div><span class="num small" style="width:44px;text-align:right">${Math.round(r.v / tot * 100)}%</span></div></td><td class="r num">${r.n}</td><td class="r num">${brl(r.avg)}</td><td class="r num">${r.open}</td></tr>`).join('')}</tbody></table></div></div>`;
+  },
+
+  async vContas(pg) {
+    const [a, b, lbl] = this.periodRange();
+    const ts = (await this.q('tickets', 'closedAt', a, b)).filter(t => t.status === 'fechada' || t.status === 'cancelada');
+    const ini = ts.length ? Math.min(...ts.map(t => t.openedAt || t.closedAt)) - 60000 : a;
+    const os = ts.length ? await this.q('orders', 'at', ini, b) : [];
+    pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Contas e fechamento</h1><div class="sub">Cada comanda e mesa fechada, da última para a primeira. Toque para ver o que foi consumido e cancelado. ${esc(lbl)}${Loja.multi() ? ' · ' + esc(Loja.all() ? 'todas as lojas' : Loja.nome()) : ''}</div></div></div>
+      ${this.periodChips()}${Contas.html(ts, os)}`;
+    this.bindPeriod(pg); Contas.wire(pg, () => this.render());
   },
 
   async vAnalises(pg) {
