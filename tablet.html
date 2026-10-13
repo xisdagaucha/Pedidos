@@ -600,6 +600,60 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .ct-body .t{background:var(--surface)}
 .ct-cancel td{color:var(--bad)}
 .ct-tot{max-width:340px;margin-left:auto;width:100%}
+/* ===== tela de entrada (gestora e caixa) ===== */
+.g-login{--gl-bg:#0d120f;--gl-bg2:#121915;--gl-key:#1b231e;--gl-keyh:#243029;--gl-line:#26302a;--gl-fg:#eef3ef;--gl-mut:#8e9c92;--gl-acc:#35b86b;
+  min-height:100%;height:100%;display:grid;grid-template-columns:minmax(300px,42%) 1fr;background:var(--gl-bg);color:var(--gl-fg)}
+.gl-brand{display:flex;flex-direction:column;justify-content:space-between;gap:28px;padding:clamp(24px,4vw,48px);border-right:1px solid var(--gl-line)}
+.gl-logo{display:flex;align-items:center;gap:12px}
+.gl-logo .mark{width:44px;height:44px;border-radius:12px;background:var(--gl-acc);display:grid;place-items:center}
+.gl-logo .mark .logo{width:28px;height:28px;background:#fff}
+.gl-logo b{display:block;font-family:var(--f-display);font-size:20px;letter-spacing:.03em;text-transform:uppercase}
+.gl-logo small{display:block;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--gl-mut)}
+.gl-date{display:block;font-family:var(--f-display);font-weight:700;font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--gl-acc);margin-bottom:12px}
+.gl-hello h1{font-family:var(--f-display);font-weight:800;font-size:clamp(44px,5.5vw,72px);line-height:.95;margin:0 0 16px;color:var(--gl-fg)}
+.gl-hello p{color:var(--gl-mut);max-width:34ch;margin:0;line-height:1.5}
+.gl-lojas{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.gl-lojas span{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;padding:8px 14px;border:1px solid var(--gl-line);border-radius:10px;background:var(--gl-bg2)}
+.gl-lojas i{width:8px;height:8px;border-radius:50%;background:var(--gl-acc);box-shadow:0 0 0 3px rgba(53,184,107,.18)}
+.gl-pin{display:grid;place-items:center;padding:28px 20px;background:var(--gl-bg2)}
+.gl-pin-in{width:min(340px,100%);display:flex;flex-direction:column;align-items:center;gap:14px}
+.gl-lock{color:var(--gl-acc)}.gl-lock svg{width:26px;height:26px}
+.gl-pin h2{font-family:var(--f-display);font-size:30px;color:var(--gl-fg);margin:0}
+.g-login .pin-dots i{border-color:#4a574e;width:15px;height:15px}
+.g-login .pin-dots i.f{background:var(--gl-acc);border-color:var(--gl-acc)}
+.g-login .pin-pad{max-width:none;width:100%;gap:10px}
+.g-login .pin-pad button{height:64px;border-radius:12px;border:1px solid var(--gl-line);background:var(--gl-key);color:var(--gl-fg);font-size:28px;cursor:pointer;transition:background .12s,transform .08s}
+.g-login .pin-pad button:hover{background:var(--gl-keyh)}
+.g-login .pin-pad button:active{transform:scale(.96);background:var(--gl-acc);color:#06210f}
+.g-login .pin-pad .pp-clear,.g-login .pin-pad .pp-back{background:transparent;border-color:transparent;color:var(--gl-mut);font-size:15px;letter-spacing:.08em}
+.g-login .pin-pad .pp-back{font-size:24px}
+.gl-ou{width:100%;display:flex;align-items:center;gap:12px;color:var(--gl-mut);font-size:11px;letter-spacing:.14em;text-transform:uppercase}
+.gl-ou::before,.gl-ou::after{content:"";flex:1;height:1px;background:var(--gl-line)}
+.gl-badge{width:100%;display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--gl-line);border-radius:12px;background:var(--gl-bg)}
+.gl-badge svg{width:22px;height:22px;color:var(--gl-acc);flex:none}
+.gl-badge b{display:block;font-size:14px}.gl-badge small{display:block;font-size:12px;color:var(--gl-mut)}
+.gl-demo{color:var(--gl-mut);font-size:12px;margin:0}
+.pm-err{color:#ff7b70;min-height:16px;margin:-4px 0 0;font-size:13px;text-align:center}
+.pin-dots.shake{animation:pinShake .35s}
+@keyframes pinShake{20%,60%{transform:translateX(-7px)}40%,80%{transform:translateX(7px)}}
+@media (max-width:760px){.g-login{grid-template-columns:1fr;height:auto}.gl-brand{border-right:0;border-bottom:1px solid var(--gl-line);gap:18px}.gl-hello h1{font-size:44px}.gl-lojas{flex-direction:row;flex-wrap:wrap}}
+/* ===== janela de PIN (dentro do app) ===== */
+.modal.pin-modal{width:min(380px,100%);border-radius:18px}
+.modal.pin-modal .body{padding:0;gap:0}
+.pm-top{background:#121915;color:#eef3ef;padding:16px 18px 14px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.pm-top .row{width:100%;align-items:center;gap:10px}
+.pm-ico{width:30px;height:30px;border-radius:9px;background:#35b86b;color:#06210f;display:grid;place-items:center;flex:none}.pm-ico svg{width:16px;height:16px}
+.pm-top b{font-family:var(--f-display);font-size:20px}
+.pm-x{width:32px;height:32px;border-radius:9px;border:1px solid #2c3830;background:transparent;color:#cfd8d1;display:grid;place-items:center;cursor:pointer}.pm-x svg{width:16px;height:16px}
+.pm-hint{margin:0;font-size:13px;color:#a9b6ad;text-align:center;width:100%}
+.pm-top .pin-dots i{border-color:#4a574e}.pm-top .pin-dots i.f{background:#35b86b;border-color:#35b86b}
+.pm-pad{padding:16px 18px 14px;display:flex;flex-direction:column;gap:12px}
+.pm-pad .pin-pad{max-width:none;width:100%;margin:0;gap:10px}
+.pm-pad .pin-pad button{height:56px;border-radius:12px;font-size:24px;cursor:pointer}
+.pm-pad .pin-pad button:active{background:var(--accent);color:var(--accent-ink)}
+.pm-pad .pin-pad .pp-clear,.pm-pad .pin-pad .pp-back{background:transparent;border-color:transparent;color:var(--muted);font-size:14px;letter-spacing:.08em}
+.pm-pad .pin-pad .pp-back{font-size:22px}
+.pm-pad .pin-scan{color:var(--muted);font-size:12px;margin:0}
 </style>
 <script src="config.js"></script>
 <script>window.PEDIDOX_ROLE = "tablet";</script>
@@ -622,7 +676,7 @@ const LOGO_FAVICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYA
 
 /* ===================== Pedido X — núcleo ===================== */
 'use strict';
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.7.1';
 
 /* ---------- utilitários ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -738,42 +792,66 @@ const Codes = {
   },
   novo() { let c; do { c = 'XG' + String(Math.floor(100000 + Math.random() * 900000)); } while (Store.all('operators').some(o => o.badge === c)); return c; },
 };
+/* teclado de PIN reutilizável (janela e tela de entrada da gestora). Aceita leitor de crachá (digitação rápida + Enter). */
+function pinPad({ dotsEl, errEl, padEl, check, onOk }) {
+  let v = '', scan = '', lastKey = 0, scanning = false, pendT = null, pend = [], alive = true;
+  dotsEl.innerHTML = '<i></i>'.repeat(4);
+  padEl.innerHTML = [1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map(k => `<button type="button" data-k="${k}" class="${k === 'C' ? 'pp-clear' : k === '⌫' ? 'pp-back' : ''}" aria-label="${k === 'C' ? 'Limpar' : k === '⌫' ? 'Apagar' : k}">${k === 'C' ? 'LIMPAR' : k}</button>`).join('');
+  const dots = $$('i', dotsEl);
+  const draw = () => dots.forEach((d, i) => d.classList.toggle('f', i < v.length));
+  const erro = t => { errEl.textContent = t; dotsEl.classList.remove('shake'); void dotsEl.offsetWidth; dotsEl.classList.add('shake'); };
+  const done = r => { destroy(); onOk(r); };
+  const press = k => {
+    if (!alive) return;
+    if (k === 'C') v = ''; else if (k === '⌫') v = v.slice(0, -1); else if (v.length < 4) { v += k; errEl.textContent = ''; }
+    draw();
+    if (v.length === 4) { const r = check(v); if (r) done(r); else { erro('PIN incorreto'); v = ''; setTimeout(draw, 150); } }
+  };
+  const tryScan = code => { const r = check(Codes.norm(code)); if (r) done(r); else { erro('Crachá não reconhecido'); v = ''; draw(); } };
+  const onClick = e => { const b = e.target.closest('[data-k]'); if (b) press(b.dataset.k); };
+  padEl.addEventListener('click', onClick);
+  /* teclas: guardamos um instante antes de tratar como PIN, para ver se é o leitor */
+  const onKey = e => {
+    if (!alive || !document.body.contains(padEl)) return destroy();
+    const now = performance.now(), fast = now - lastKey < 45; lastKey = now;
+    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(pendT); const code = scan; scan = ''; pend = []; if (code.length >= 4) tryScan(code); scanning = false; return; }
+    if (e.key === 'Backspace') { press('⌫'); return; }
+    if (e.key.length !== 1 || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    if (!fast) { scan = ''; scanning = false; }
+    scan += e.key;
+    if (fast && scan.length >= 2) { scanning = true; clearTimeout(pendT); pend = []; return; }
+    if (!/^\d$/.test(e.key)) { scanning = true; return; }
+    pend.push(e.key); clearTimeout(pendT);
+    pendT = setTimeout(() => { if (!scanning) pend.forEach(press); pend = []; }, 70);
+  };
+  document.addEventListener('keydown', onKey, true);
+  function destroy() { alive = false; clearTimeout(pendT); document.removeEventListener('keydown', onKey, true); padEl.removeEventListener('click', onClick); }
+  return { destroy };
+}
+/* tela de entrada com o teclado já aberto (gestora e caixa) */
+function pinScreen(root, { area, quem, texto, titulo, check, onOk, demo = '' }) {
+  const d = new Date(), h = d.getHours(), saud = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+  const data = d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }).replace('-feira', '');
+  root.innerHTML = `<div class="g-login"><section class="gl-brand"><div class="gl-logo"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span><b>${esc(Store.settings().storeName || 'Xis da Gaúcha')}</b><small>${esc(area)}</small></span></div>
+      <div class="gl-hello"><span class="gl-date">${esc(data)}</span><h1>${saud},<br>${esc(quem)}.</h1><p>${esc(texto)}</p></div>
+      <div class="gl-lojas">${Loja.list().filter(l => Loja.role() === 'gestora' || l.id === Loja.w()).map(l => `<span><i></i>${esc(l.nome)}</span>`).join('')}</div></section>
+    <section class="gl-pin"><div class="gl-pin-in"><span class="gl-lock">${ico('lock')}</span><h2>${esc(titulo)}</h2><div class="pin-dots"></div><p class="pm-err" data-err></p><div class="pin-pad"></div>
+      <div class="gl-ou"><span>ou</span></div><div class="gl-badge">${ico('qr')}<span><b>Passe o crachá no leitor</b><small>Entra direto, sem digitar nada</small></span></div>
+      ${demo ? `<p class="gl-demo">${esc(demo)}</p>` : ''}</div></section></div>`;
+  if (root._pp) root._pp.destroy();
+  root._pp = pinPad({ dotsEl: $('.gl-pin .pin-dots', root), errEl: $('.gl-pin [data-err]', root), padEl: $('.gl-pin .pin-pad', root), check, onOk: r => { root._pp = null; onOk(r); } });
+}
 function askPin({ title = 'Digite o PIN', check, hint = '' }) {
   return new Promise(res => {
-    let v = '', scan = '', lastKey = 0, scanning = false, pendT = null, pend = [];
+    let fin = false, pp = null;
     const m = modal({
-      title, body: `${hint ? `<p class="muted small" style="margin:0;text-align:center">${esc(hint)}</p>` : ''}
-      <div class="pin-dots">${'<i></i>'.repeat(4)}</div><p class="small" data-err style="color:var(--bad);text-align:center;min-height:20px;margin:0"></p>
-      <div class="pin-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, '⌫'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div>
-      <p class="muted small pin-scan" style="margin:0;text-align:center">${ico('qr')} ou passe o crachá no leitor</p>`,
-      onClose: () => res(null)
+      cls: 'pin-modal', body: `<div class="pm-top"><div class="row"><span class="pm-ico">${ico('lock')}</span><b class="grow">${esc(title)}</b><button class="pm-x" data-x aria-label="Fechar">${ico('x')}</button></div>
+        ${hint ? `<p class="pm-hint">${esc(hint)}</p>` : ''}<div class="pin-dots"></div><p class="pm-err" data-err></p></div>
+        <div class="pm-pad"><div class="pin-pad"></div><p class="pin-scan">${ico('qr')} ou passe o crachá no leitor</p></div>`,
+      onClose: () => { pp && pp.destroy(); if (!fin) res(null); }
     });
-    const dots = $$('.pin-dots i', m.el), err = $('[data-err]', m.el);
-    const draw = () => dots.forEach((d, i) => d.classList.toggle('f', i < v.length));
-    const finish = r => { const fin = res; res = () => { }; document.removeEventListener('keydown', onKey, true); m.close(); fin(r); };
-    const press = k => {
-      if (k === 'C') v = ''; else if (k === '⌫') v = v.slice(0, -1); else if (v.length < 4) v += k;
-      draw();
-      if (v.length === 4) { const r = check(v); if (r) finish(r); else { err.textContent = 'PIN incorreto'; v = ''; setTimeout(draw, 150); } }
-    };
-    const tryScan = code => { const r = check(Codes.norm(code)); if (r) finish(r); else { err.textContent = 'Crachá não reconhecido'; v = ''; draw(); } };
-    m.el.addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (b) press(b.dataset.k); });
-    /* teclas: guardamos um instante antes de tratar como PIN, para ver se é o leitor */
-    const onKey = e => {
-      if (!document.body.contains(m.el)) return;
-      const now = performance.now(), fast = now - lastKey < 45; lastKey = now;
-      if (e.key === 'Enter') { e.preventDefault(); clearTimeout(pendT); const code = scan; scan = ''; pend = []; if (code.length >= 4) tryScan(code); scanning = false; return; }
-      if (e.key === 'Backspace') { press('⌫'); return; }
-      if (e.key.length !== 1 || e.ctrlKey || e.metaKey) return;
-      e.preventDefault();
-      if (!fast) { scan = ''; scanning = false; }
-      scan += e.key;
-      if (fast && scan.length >= 2) { scanning = true; clearTimeout(pendT); pend = []; return; }
-      if (!/^\d$/.test(e.key)) { scanning = true; return; }
-      pend.push(e.key); clearTimeout(pendT);
-      pendT = setTimeout(() => { if (!scanning) pend.forEach(press); pend = []; }, 70);
-    };
-    document.addEventListener('keydown', onKey, true);
+    pp = pinPad({ dotsEl: $('.pin-dots', m.el), errEl: $('[data-err]', m.el), padEl: $('.pin-pad', m.el), check, onOk: r => { fin = true; m.close(); res(r); } });
     m.el.tabIndex = -1; m.el.focus();
   });
 }
@@ -2231,7 +2309,7 @@ const PDV = {
     if (!Store.isStaff()) return renderLogin(this.root, 'Caixa');
     if (!Loja.configured()) return this.renderPickLoja();
     if (this.op && this.op.id !== 'gestora' && Store.cache.operators && Object.keys(Store.cache.operators).length && !Store.all('operators').find(o => o.id === this.op.id)) this.op = null;
-    if (!this.op) { this.root.innerHTML = `<div class="chooser"><div class="brand"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span class="name">Caixa<small>${esc(Store.settings().storeName)}</small></span></div><button class="btn primary big" id="op-in" style="align-self:flex-start">${ico('lock')} Entrar com meu PIN</button>${Store.mode === 'demo' ? (Loja.cur() === 'palhoca' ? '<p class="muted">Demonstração: PIN 3333 (Caixa Palhoça).</p>' : '<p class="muted">Demonstração: PIN 1111 (Kelli) ou 2222 (Laiane).</p>') : ''}</div>`; $('#op-in').onclick = () => this.ensureOp(); return; }
+    if (!this.op) { if (this.root._pp && $('.g-login', this.root)) return; pinScreen(this.root, { area: 'Caixa · ' + (Store.settings().unidade || Loja.nome()), quem: 'equipe', texto: 'Digite seu PIN ou passe o crachá no leitor para abrir o caixa. Fica registrado quem lançou, cancelou e fechou cada conta.', titulo: 'Quem está no caixa?', check: p => Codes.op(p) || Codes.gestora(p), onOk: op => { this.op = { id: op.id, name: op.name, role: op.role }; this.render(); }, demo: Store.mode === 'demo' ? (Loja.cur() === 'palhoca' ? 'Demonstração: PIN 3333 (Caixa Palhoça).' : 'Demonstração: PIN 1111 (Kelli) ou 2222 (Laiane).') : '' }); return; }
     const calls = Store.all('calls').filter(c => c.status === 'aberto');
     const newCalls = calls.filter(c => !this.lastCalls.has(c.id));
     if (newCalls.length) { beep(); newCalls.forEach(c => toast(`Mesa ${c.mesa || '-'} chamou: ${c.request}`)); }
@@ -2249,7 +2327,7 @@ const PDV = {
     else { if (this.view === 'salao') this.ficha = null; ({ salao: () => this.renderSalao(pg), chamados: () => this.renderCalls(pg), cardapio: () => this.renderMenu(pg), equipe: () => Equipe.pdvPage(pg, this), impressoes: () => this.renderPrints(pg), tablets: () => this.renderTablets(pg), caixa: () => this.renderCaixa(pg) }[this.view])(); }
     $('.main', this.root).scrollTop = scroll;
     $$('[data-nav]', this.root).forEach(b => b.onclick = () => { this.view = b.dataset.nav; this.ficha = null; this.mesaView = null; this.render(); });
-    $('#op-sw', this.root).onclick = $('#op-sw2', this.root).onclick = () => { this.op = null; this.ensureOp(); };
+    $('#op-sw', this.root).onclick = $('#op-sw2', this.root).onclick = () => { this.op = null; this.render(); };
     const ls = $('#lj-sw', this.root); if (ls) ls.onclick = () => this.pickLoja(true);
     const lo = $('#lo', this.root); if (lo) lo.onclick = async () => { await Store.logout(); this.op = null; location.reload(); };
   },
@@ -2729,8 +2807,8 @@ const Gestora = {
     if (!this.root) return;
     if (!Store.isStaff()) return renderLogin(this.root, 'Gestora');
     if (!this.unlocked) {
-      this.root.innerHTML = `<div class="chooser"><div class="brand"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span class="name">Gestora<small>${esc(Store.settings().storeName)}</small></span></div><button class="btn primary big" id="g-in" style="align-self:flex-start">${ico('lock')} Entrar com PIN de gestora</button>${Store.mode === 'demo' ? '<p class="muted">Demonstração: PIN 1234.</p>' : ''}</div>`;
-      $('#g-in').onclick = async () => { const ok = await askPin({ title: 'PIN de gestora', check: p => Codes.gestora(p) }); if (ok) { this.unlocked = true; this.render(); } };
+      if (this.root._pp && $('.g-login', this.root)) return;
+      pinScreen(this.root, { area: 'Área da gestora', quem: 'gestora', texto: `Digite seu PIN ou passe o crachá no leitor para acompanhar ${Loja.multi() ? 'as duas lojas' : 'a loja'}.`, titulo: 'PIN de gestora', check: p => Codes.gestora(p), onOk: () => { this.unlocked = true; this.render(); }, demo: Store.mode === 'demo' ? 'Demonstração: PIN 1234.' : '' });
       return;
     }
     const nav = [['inicio', 'home', 'Início'], ['analises', 'chart', 'Análises'], ['pesquisa', 'smile', 'Pesquisa de satisfação'], ['contas', 'receipt', 'Contas e fechamento'], ['movs', 'list', 'Movimentações'], ['consumo', 'receipt', 'Consumo da equipe'], null, ['cardapio', 'menu', 'Cardápio'], ['destaques', 'star', 'Destaques do tablet'], ['mesas', 'qr', 'Mesas e comandas'], ['equipe', 'users', 'Equipe'], ['dispositivos', 'tablet', 'Dispositivos'], ['config', 'gear', 'Configurações']];
