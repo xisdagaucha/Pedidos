@@ -676,7 +676,7 @@ const LOGO_FAVICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYA
 
 /* ===================== Pedido X — núcleo ===================== */
 'use strict';
-const APP_VERSION = '2.7.1';
+const APP_VERSION = '2.7.2';
 
 /* ---------- utilitários ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -2769,9 +2769,24 @@ function beep() { try { _ac = _ac || new (window.AudioContext || window.webkitAu
 
 function renderLogin(root, area) {
   root.innerHTML = `<div class="chooser" style="max-width:420px"><div class="brand"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span class="name">${esc(area)}<small>${esc(Store.settings().storeName)}</small></span></div>
-    <form class="card col" id="lg"><h3>Entrar</h3><label class="field"><span>E-mail</span><input class="input" id="lg-e" type="email" autocomplete="username" required></label><label class="field"><span>Senha</span><input class="input" id="lg-p" type="password" autocomplete="current-password" required></label><p class="small" id="lg-err" style="color:var(--bad);margin:0"></p><button class="btn primary big">Entrar</button></form>
+    <form class="card col" id="lg"><h3>Entrar</h3><label class="field"><span>E-mail</span><input class="input" id="lg-e" type="email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required></label><label class="field"><span>Senha</span><input class="input" id="lg-p" type="password" autocapitalize="off" autocorrect="off" autocomplete="current-password" required></label><p class="small" id="lg-err" style="color:var(--bad);margin:0"></p><button class="btn primary big">Entrar</button></form>
     ${window.PEDIDOX_ROLE ? '' : `<button class="btn ghost" id="lg-back">${ico('back')} Escolher outro aparelho</button>`}</div>`;
-  $('#lg').onsubmit = async e => { e.preventDefault(); try { await Store.login($('#lg-e').value.trim(), $('#lg-p').value); } catch (err) { $('#lg-err').textContent = 'E-mail ou senha incorretos.'; } };
+  $('#lg').onsubmit = async e => {
+    e.preventDefault(); const em = $('#lg-e').value.trim().toLowerCase(), pw = $('#lg-p').value.replace(/\s+$/, '');
+    $('#lg-err').textContent = 'Entrando…';
+    try { await Store.login(em, pw); }
+    catch (err) {
+      const c = (err && err.code) || '';
+      const msg = /too-many-requests/.test(c) ? 'Muitas tentativas erradas. O Firebase bloqueou por alguns minutos: espere uns 10 minutos e tente de novo.'
+        : /network/.test(c) ? 'Sem internet. Confira a conexão e tente de novo.'
+        : /invalid-email/.test(c) ? 'E-mail com formato errado. Confira se não tem espaço ou letra trocada.'
+        : /user-disabled/.test(c) ? 'Este usuário está desativado no Firebase.'
+        : /user-not-found/.test(c) ? `Não existe usuário com o e-mail ${em}. Crie no Firebase em Authentication → Users.`
+        : /operation-not-allowed/.test(c) ? 'O login por e-mail e senha está desligado no Firebase (Authentication → Sign-in method).'
+        : `E-mail ou senha incorretos (${em}).`;
+      $('#lg-err').textContent = msg + (c ? ` [${c.replace('auth/', '')}]` : '');
+    }
+  };
   if ($('#lg-back')) $('#lg-back').onclick = () => { lsSet('pedidox_role', null); location.hash = ''; App.route(); };
 }
 
