@@ -683,7 +683,7 @@ const LOGO_FAVICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYA
 
 /* ===================== Pedido X — núcleo ===================== */
 'use strict';
-const APP_VERSION = '2.9.0';
+const APP_VERSION = '2.9.1';
 
 /* ---------- utilitários ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -2331,7 +2331,7 @@ const PDV = {
     const scroll = $('.main', this.root)?.scrollTop || 0;
     this.root.innerHTML = `<div class="shell"><aside class="side"><div class="brand"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span class="name">Caixa<small>${esc(Store.settings().unidade || '')}</small></span></div>
       ${nav.map(n => `<button class="nav ${this.view === n[0] ? 'on' : ''}" data-nav="${n[0]}">${ico(n[1])} ${n[2]}</button>`).join('')}
-      <div class="sep"></div><button class="nav" id="op-sw">${ico('lock')} Trocar operador</button>${Loja.multi() ? `<button class="nav" id="lj-sw">${ico('store')} Trocar loja</button>` : ''}${Store.mode === 'firebase' ? `<button class="nav" id="lo">${ico('out')} Sair</button>` : ''}
+      <div class="sep"></div><button class="nav" id="pdv-rl">${ico('refresh')} Atualizar</button><button class="nav" id="op-sw">${ico('lock')} Trocar operador</button>${Loja.multi() ? `<button class="nav" id="lj-sw">${ico('store')} Trocar loja</button>` : ''}${Store.mode === 'firebase' ? `<button class="nav" id="lo">${ico('out')} Sair</button>` : ''}
       <div class="foot">Operador: <b>${esc(this.op.name)}</b></div></aside>
       <nav class="mob-nav">${nav.map(n => `<button class="${this.view === n[0] ? 'on' : ''}" data-nav="${n[0]}">${n[2]}</button>`).join('')}<button id="op-sw2">Trocar operador</button></nav>
       <div class="main"><div class="page" id="pg"></div></div></div>`;
@@ -2340,6 +2340,7 @@ const PDV = {
     else { if (this.view === 'salao') this.ficha = null; ({ salao: () => this.renderSalao(pg), chamados: () => this.renderCalls(pg), cardapio: () => this.renderMenu(pg), equipe: () => Equipe.pdvPage(pg, this), impressoes: () => this.renderPrints(pg), tablets: () => this.renderTablets(pg), caixa: () => this.renderCaixa(pg) }[this.view])(); }
     $('.main', this.root).scrollTop = scroll;
     $$('[data-nav]', this.root).forEach(b => b.onclick = () => { this.view = b.dataset.nav; this.ficha = null; this.mesaView = null; this.render(); });
+    $('#pdv-rl', this.root).onclick = () => { Object.keys(Store.ver || {}).forEach(c => Store.bump && Store.bump(c)); this.render(); toast('Atualizado'); };
     $('#op-sw', this.root).onclick = $('#op-sw2', this.root).onclick = () => { this.op = null; this.render(); };
     const ls = $('#lj-sw', this.root); if (ls) ls.onclick = () => this.pickLoja(true);
     const lo = $('#lo', this.root); if (lo) lo.onclick = async () => { await Store.logout(); this.op = null; location.reload(); };
@@ -2852,11 +2853,12 @@ const Gestora = {
     const scroll = $('.main', this.root)?.scrollTop || 0;
     this.root.innerHTML = `<div class="shell"><aside class="side"><div class="brand"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span class="name">Gestora<small>${esc(Loja.all() ? 'Todas as lojas' : Loja.nome())}</small></span></div>
       ${nav.map(n => n ? `<button class="nav ${this.view === n[0] ? 'on' : ''}" data-nav="${n[0]}">${ico(n[1])} ${n[2]}</button>` : '<div class="sep"></div>').join('')}
-      <div class="sep"></div><button class="nav" id="g-lock">${ico('lock')} Bloquear</button><div class="foot">Pedido X · versão ${APP_VERSION}</div></aside>
+      <div class="sep"></div><button class="nav" id="g-rl">${ico('refresh')} Atualizar</button><button class="nav" id="g-lock">${ico('lock')} Bloquear</button><div class="foot">Pedido X · versão ${APP_VERSION}</div></aside>
       <nav class="mob-nav">${nav.filter(Boolean).map(n => `<button class="${this.view === n[0] ? 'on' : ''}" data-nav="${n[0]}">${n[2]}</button>`).join('')}</nav>
       <div class="main">${Loja.multi() ? `<div class="loja-bar"><span class="label">Loja</span><div class="chips">${[['*', 'Todas']].concat(Loja.list().map(l => [l.id, Loja.curto(l.id)])).map(([id, n]) => `<button data-lj="${id}" class="${Loja.cur() === id ? 'on' : ''}">${esc(n)}</button>`).join('')}</div></div>` : ''}<div class="page" id="pg"></div></div></div>`;
     $$('[data-nav]', this.root).forEach(b => b.onclick = () => { this.view = b.dataset.nav; this.render(); });
     $$('[data-lj]', this.root).forEach(b => b.onclick = () => { Loja.set(b.dataset.lj); this._memo = {}; this.render(); });
+    $('#g-rl', this.root).onclick = () => { this._memo = {}; this.render(); toast('Atualizado'); };
     $('#g-lock', this.root).onclick = () => { this.unlocked = false; this.render(); };
     const pg = $('#pg', this.root);
     const fn = { inicio: this.vInicio, analises: this.vAnalises, pesquisa: this.vPesquisa, movs: this.vMovs, contas: this.vContas, consumo: function (pg) { return Equipe.gestoraPage(pg, this); }, cardapio: this.vCardapio, destaques: this.vBanners, mesas: this.vMesas, equipe: this.vEquipe, dispositivos: this.vDisp, config: this.vConfig }[this.view];
@@ -3687,6 +3689,29 @@ const Equipe = {
     };
   },
 
+  /* ---------- GESTORA: corrigir prato e custo das refeições já lançadas num dia ---------- */
+  corrigirDia(dia, ms, done) {
+    const wd = new Date(dia).getDay(), md = this.menuDia(wd), pratos = ms.filter(r => !r.itemId), lanches = ms.filter(r => r.itemId);
+    const atual = [...new Set(pratos.map(r => r.prato))].join(' / ');
+    const m = modal({ title: `Corrigir ${DIAS[wd]} ${fmtDate(dia)}`, body: `<p class="muted" style="margin-top:0">Muda as refeições <b>já lançadas</b> neste dia. Vale também para o relatório e o custo com alimentação.</p>
+      ${pratos.length ? `<div class="card col" style="gap:10px;padding:12px"><b>Prato do dia · ${plural(pratos.length, 'refeição', 'refeições')}</b><span class="muted small">Hoje está como: ${esc(atual || '—')}</span>
+        <label class="field"><span>O que foi servido</span><input class="input" id="cd-p" value="${esc(md.planejado || pratos[0].prato || '')}"></label>
+        <label class="field"><span>Custo por refeição (R$)</span><input class="input num" id="cd-c" inputmode="decimal" style="width:140px" value="${md.custo ? money(md.custo) : pratos[0].custo ? money(pratos[0].custo) : ''}"></label>
+        <label class="row small"><input type="checkbox" id="cd-s" checked> Salvar também no Cardápio da equipe (toda ${esc(DIAS[wd])})</label></div>` : ''}
+      ${lanches.length ? `<div class="card col" style="gap:10px;padding:12px"><b>Lanches · ${plural(lanches.length, 'refeição', 'refeições')}</b><label class="field"><span>Custo por lanche (R$)</span><input class="input num" id="cd-l" inputmode="decimal" style="width:140px" value="${lanches[0].custo ? money(lanches[0].custo) : ''}"></label></div>` : ''}`,
+      foot: '<button class="btn" data-x>Cancelar</button><button class="btn primary" id="cd-ok">Atualizar refeições</button>' });
+    $('#cd-ok', m.el).onclick = async () => {
+      const pi = $('#cd-p', m.el), ci = $('#cd-c', m.el), li = $('#cd-l', m.el);
+      const prato = pi ? pi.value.trim() : '', custo = ci ? num(ci.value) : 0, cl = li ? num(li.value) : 0;
+      let n = 0;
+      for (const r of pratos) { const patch = { corrigido: { at: Date.now(), by: 'Gestora', antes: { prato: r.prato, custo: r.custo || 0 } } }; if (prato) patch.prato = prato; if (ci && ci.value.trim()) patch.custo = custo; await Store.update('equipe', r.id, patch); n++; }
+      if (li && li.value.trim()) for (const r of lanches) { await Store.update('equipe', r.id, { custo: cl, corrigido: { at: Date.now(), by: 'Gestora', antes: { prato: r.prato, custo: r.custo || 0 } } }); n++; }
+      const sv = $('#cd-s', m.el);
+      if (sv && sv.checked && prato) { const sm = JSON.parse(JSON.stringify(Store.base().staffMenu || {})); sm[wd] = Object.assign({}, sm[wd] || {}, { proteina: prato, custo: ci && ci.value.trim() ? custo : (sm[wd] || {}).custo || 0 }); await Store.update('settings', 'main', { staffMenu: sm }); }
+      m.close(); toast(`${plural(n, 'refeição atualizada', 'refeições atualizadas')}`); done && done();
+    };
+  },
+
   /* ---------- GESTORA: corrigir um lançamento (voucher ↔ descontar, pago, excluir) ---------- */
   /* lançamento com valor para a pessoa pagar: consumo, ou refeição com adicional pago */
   val(r) { return !!r && (r.kind === 'consumo' || (r.extraTotal || 0) > 0); },
@@ -4010,10 +4035,13 @@ const Equipe = {
       const semCusto = meals.filter(r => !r.custo).length;
       G._eqCsv = [['Dia', 'Refeições', 'Almoço', 'Janta', 'Entregadores', 'Custo'], ...Object.entries(days).sort((x, y) => y[0] - x[0]).map(([k, d]) => [fmtDate(+k), d.n, d.alm, d.jan, d.ent, money(d.custo)])];
       html = `<div class="kpis"><div class="kpi"><span class="label">Custo com alimentação</span><span class="v">${brl(tot)}</span><span class="d">${lbl}</span></div><div class="kpi"><span class="label">Refeições</span><span class="v">${meals.length}</span><span class="d">${meals.filter(r => r.tipo === 'entregador').length} de entregadores</span></div><div class="kpi"><span class="label">Custo médio por refeição</span><span class="v">${brl(meals.length ? tot / meals.length : 0)}</span></div><div class="kpi"><span class="label">Média por dia</span><span class="v">${brl(nd ? tot / nd : 0)}</span><span class="d">projeção do mês (26 dias): ${brl(nd ? tot / nd * 26 : 0)}</span></div></div>
-        ${semCusto ? `<div class="alert">${ico('cash')}<div class="grow">${plural(semCusto, 'refeição ficou', 'refeições ficaram')} sem custo porque o dia não tinha custo cadastrado. Preencha em "Cardápio da equipe".</div></div>` : ''}
-        <div class="card"><h3 style="margin-bottom:10px">Custo por dia</h3>${barChart(Object.entries(days).sort((x, y) => x[0] - y[0]).map(([k, d]) => ({ l: fmtDate(+k).slice(0, 5), v: d.custo })), { money: true })}</div>
-        <div class="table-wrap"><table class="t"><thead><tr><th>Dia</th><th class="r">Refeições</th><th class="r">Almoço</th><th class="r">Janta</th><th class="r">Entregadores</th><th class="r">Custo</th></tr></thead><tbody>
-        ${Object.entries(days).sort((x, y) => y[0] - x[0]).map(([k, d]) => `<tr><td>${DIAS[new Date(+k).getDay()]} ${fmtDate(+k)}</td><td class="r num">${d.n}</td><td class="r num">${d.alm}</td><td class="r num">${d.jan}</td><td class="r num">${d.ent}</td><td class="r num"><b>${brl(d.custo)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Nenhuma refeição no período.</td></tr>'}</tbody></table></div>
+        ${semCusto ? `<div class="alert">${ico('cash')}<div class="grow">${plural(semCusto, 'refeição ficou', 'refeições ficaram')} sem custo porque o dia não tinha custo cadastrado. Toque no dia na tabela abaixo e use <b>Corrigir este dia</b>, ou preencha em "Cardápio da equipe" para os próximos.</div></div>` : ''}
+        <div class="card"><h3 style="margin-bottom:10px">Custo por dia</h3>${!tot ? '<p class="muted" style="margin:0">Sem custo cadastrado no período.</p>' : barChart(Object.entries(days).sort((x, y) => x[0] - y[0]).map(([k, d]) => ({ l: fmtDate(+k).slice(0, 5), v: d.custo })), { money: true })}</div>
+        <p class="muted small" style="margin:0">Toque num dia para ver quem comeu e o que comeu. Se o prato ou o custo estiverem errados, use <b>Corrigir este dia</b>.</p>
+        <div class="ct-list">${Object.entries(days).sort((x, y) => y[0] - x[0]).map(([k, d]) => { const open = (G.cuOpen = G.cuOpen || new Set()).has(k), ms = meals.filter(r => dayStart(r.at) === +k).sort((a, b) => a.at - b.at), pr = [...new Set(ms.filter(r => !r.itemId).map(r => r.prato))];
+          return `<div class="ct-row ${open ? 'open' : ''}"><div class="ct-head" data-cu="${k}"><span class="ct-h" style="min-width:150px">${DIAS[new Date(+k).getDay()]} ${fmtDate(+k)}</span><span class="grow small">${pr.length ? esc(pr.join(' / ')) : ''}${d.ent ? ` <span class="muted">· ${d.ent} entregador${d.ent > 1 ? 'es' : ''}</span>` : ''}</span><span class="pill">${d.n} refeições</span><span class="muted small">${d.alm} almoço · ${d.jan} janta</span><b class="num ct-v">${d.custo ? brl(d.custo) : '<span style="color:var(--bad)">sem custo</span>'}</b><span class="pr-chev">${ico(open ? 'up' : 'down')}</span></div>
+          ${open ? `<div class="ct-body"><table class="t"><thead><tr><th>Hora</th><th>Nome</th><th>Refeição</th><th>O que comeu</th><th class="r">Custo</th></tr></thead><tbody>${ms.map(r => `<tr><td class="num">${fmtTime(r.at)}</td><td>${esc(r.nome)}${r.tipo === 'entregador' ? ' <span class="pill">entregador</span>' : ''}</td><td>${esc(r.refeicao || '')}</td><td>${esc(r.prato || '')}${r.itemId ? ' <span class="muted small">(lanche)</span>' : ''}${r.extras ? ` <span class="pill warn">+ ${esc(this.extrasTxt(r))}</span>` : ''}${r.viagem ? ' <span class="pill warn">levar</span>' : ''}${r.obs ? `<div class="muted small">${esc(r.obs)}</div>` : ''}${r.corrigido ? ' <span class="pill" title="corrigido pela gestora">corrigido</span>' : ''}</td><td class="r num">${r.custo ? brl(r.custo) : '<span class="muted">–</span>'}</td></tr>`).join('')}</tbody></table>
+            <button class="btn sm primary" data-cud="${k}" style="align-self:flex-start">${ico('edit')} Corrigir este dia</button></div>` : ''}</div>`; }).join('') || '<div class="empty">Nenhuma refeição no período.</div>'}</div>
         <p class="muted small" style="margin:0">A projeção considera 26 dias de funcionamento no mês (terça a domingo).</p>`;
     } else if (G.eqTab === 'lanc') {
       const sit = G.eqSit || '', cons = rs.filter(r => this.val(r));
@@ -4075,6 +4103,8 @@ const Equipe = {
     $$('[data-lc]', pg).forEach(x => x.onclick = () => this.corrigirLanc(x.dataset.lc, () => G.render()));
     $$('[data-sit]', pg).forEach(x => x.onclick = () => { G.eqSit = x.dataset.sit; G.render(); });
     const re = () => { G._memo = {}; G.render(); };
+    $$('[data-cu]', pg).forEach(x => x.onclick = () => { const k = x.dataset.cu, o = (G.cuOpen = G.cuOpen || new Set()); o.has(k) ? o.delete(k) : o.add(k); G.render(); });
+    $$('[data-cud]', pg).forEach(x => x.onclick = () => this.corrigirDia(+x.dataset.cud, rs.filter(r => r.kind === 'refeicao' && dayStart(r.at) === +x.dataset.cud), re));
     if ($('#gl-con', pg)) { $('#gl-con', pg).onclick = () => this.consumoEsquecido(re); $('#gl-ref', pg).onclick = () => this.refeicaoEsquecida(re); $('#gl-adi', pg).onclick = () => this.adiantamento(re); }
     if (G.eqTab === 'cardapio') {
       $('#eq-save', pg).onclick = async () => {
@@ -4085,6 +4115,15 @@ const Equipe = {
         const entregLanche = {}; $$('[data-entl]', pg).forEach(x => { if (x.checked) entregLanche[x.dataset.entl] = true; });
         await Store.update('settings', 'main', { staffMenu: sm, staffDiscount: num($('#eq-desc', pg).value), staffSides: $('#eq-sides', pg).value.trim(), entregLanche: Object.keys(entregLanche).length ? entregLanche : { _nenhuma: true } });
         toast('Cardápio da equipe salvo');
+        /* mudou o prato de hoje? oferece atualizar as refeições de hoje que já foram lançadas */
+        const wd = new Date().getDay(), novo = (sm[wd] || {}).proteina;
+        if (wd !== 0 && novo) {
+          const hoje = (await Store.range('equipe', 'at', dayStart(), Date.now() + 1)).filter(r => r.kind === 'refeicao' && !r.itemId && r.prato !== novo);
+          if (hoje.length && await confirmBox(`Já ${hoje.length === 1 ? 'tem 1 refeição lançada' : `tem ${hoje.length} refeições lançadas`} hoje como "${[...new Set(hoje.map(r => r.prato))].join(' / ')}". Atualizar para "${novo}"${sm[wd].custo ? ` e custo ${brl(sm[wd].custo)}` : ''}?`, { ok: 'Atualizar as de hoje' })) {
+            for (const r of hoje) await Store.update('equipe', r.id, Object.assign({ prato: novo, corrigido: { at: Date.now(), by: 'Gestora', antes: { prato: r.prato, custo: r.custo || 0 } } }, sm[wd].custo ? { custo: sm[wd].custo } : {}));
+            G._memo = {}; toast(`${plural(hoje.length, 'refeição atualizada', 'refeições atualizadas')}`);
+          }
+        }
       };
     }
     if (G.eqTab === 'cad') {
