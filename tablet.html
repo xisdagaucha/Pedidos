@@ -654,6 +654,13 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .pm-pad .pin-pad .pp-clear,.pm-pad .pin-pad .pp-back{background:transparent;border-color:transparent;color:var(--muted);font-size:14px;letter-spacing:.08em}
 .pm-pad .pin-pad .pp-back{font-size:22px}
 .pm-pad .pin-scan{color:var(--muted);font-size:12px;margin:0}
+.spin{width:56px;height:56px;border-radius:50%;border:5px solid var(--accent-soft,#dcefe3);border-top-color:var(--accent);animation:spin .8s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.seg3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.seg3 button{padding:10px 8px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);font-family:var(--f-display);font-size:17px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer}
+.seg3 button small{font-family:var(--f-body,inherit);font-size:11px;font-weight:600;color:var(--muted)}
+.seg3 button.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.seg3 button:disabled{opacity:.45;cursor:not-allowed}
 </style>
 <script src="config.js"></script>
 <script>window.PEDIDOX_ROLE = "tablet";</script>
@@ -676,7 +683,7 @@ const LOGO_FAVICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYA
 
 /* ===================== Pedido X — núcleo ===================== */
 'use strict';
-const APP_VERSION = '2.7.2';
+const APP_VERSION = '2.9.0';
 
 /* ---------- utilitários ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -1195,7 +1202,7 @@ const DEFAULT_SETTINGS = {
   contaPrinter: 'EPSON', chamadoPrinter: 'EPSON', detailedPrint: true,
   cancelPin: true, gestoraPin: '1234',
   serviceFeeDefault: 0, askServiceFee: false,
-  paymentMethods: ['Dinheiro', 'Pix', 'Crédito', 'Débito', 'Vale-refeição'],
+  paymentMethods: ['Dinheiro', 'Pix', 'Crédito', 'Débito', 'Vale-refeição', 'Desconto fidelidade'], migPgto1: true, entregLanche: { palhoca: true },
   waiterOptions: ['Maionese extra', 'Copo extra', 'Copo com gelo', 'Talheres extra', 'Prato extra'],
   features: { chamarGarcom: true, pedirConta: true, pesquisa: true, busca: true, observacao: true, viagem: true, digitarComanda: false, travarAposConta: true, minhaConta: true },
   staffMenu: { 1: { proteina: '', custo: 0 }, 2: { proteina: 'Filé de peixe frito', custo: 0 }, 3: { proteina: 'Frango empanado', custo: 0 }, 4: { proteina: 'Bife de alcatra', custo: 0 }, 5: { proteina: 'Filé de peixe frito', custo: 0 }, 6: { proteina: 'Bisteca suína', custo: 0 }, 0: { lanches: [], custoLanche: {} } },
@@ -1274,6 +1281,14 @@ const Biz = {
     return { sub, fee, discount: round2(discount), total: round2(Math.max(0, sub + fee - discount)) };
   },
 
+  /* ajustes únicos na configuração já salva (rodam uma vez, no caixa ou na gestora) */
+  migrar() {
+    if (this._mig || !Store.isStaff() || !Store.cache.settings || !Store.cache.settings.main) return;
+    this._mig = true; const b = Store.base(), patch = {};
+    if (!b.migPgto1) { const pm = (b.paymentMethods || []).slice(); if (!pm.some(x => /fidelidade/i.test(x))) pm.push('Desconto fidelidade'); patch.paymentMethods = pm; patch.migPgto1 = true; }
+    if (!b.entregLanche) patch.entregLanche = { palhoca: true };
+    if (Object.keys(patch).length) Store.update('settings', 'main', patch).catch(() => { this._mig = false; });
+  },
   async closeTicket(tid, { payments, serviceFeePct = 0, discount = 0, by = '', caixaId = '' }) {
     const t = Store.get('tickets', tid); const tot = this.totals(tid, { serviceFeePct, discount });
     const lines = this.linesOf(tid).filter(l => !l.canceled);
@@ -2092,23 +2107,20 @@ const Tablet = {
 
   async send() {
     if (!this.cart.length) return;
-    const n = await this.identify('Leia sua comanda', 'Aponte o QR code da sua comanda para a câmera para confirmar o pedido.');
+    const n = await this.identify('Leia sua comanda para enviar', 'Aponte o QR code da sua comanda para a câmera. Assim que ler, o pedido vai direto para a cozinha.');
     if (!n) return;
     const cur = this.ticketOfComanda(n), s = Store.settings();
     if (cur && cur.status === 'conta' && s.features.travarAposConta) { modal({ title: 'Conta já pedida', body: `<p style="margin:0">A conta da comanda ${n} já foi pedida. Para pedir mais, chame um atendente.</p>`, foot: '<button class="btn primary" data-x>Entendi</button>' }); return; }
-    const total = this.cartTotal();
-    const ok = await new Promise(r => {
-      let d = false;
-      const m = modal({ title: 'Confirmar pedido', body: `<div class="big-ok" style="padding:6px 0"><div style="font-family:var(--f-display);font-size:44px;font-weight:700">Comanda ${n}</div>${this.mesa ? `<div class="muted">Mesa ${this.mesa}</div>` : ''}<div style="font-size:18px">${plural(this.cart.reduce((a, l) => a + l.qty, 0), 'item', 'itens')} · <b>${brl(total)}</b></div></div>`, foot: `<button class="btn big" data-x>Voltar</button><button class="btn primary big" id="cf-ok">Enviar para a cozinha</button>`, onClose: () => { if (!d) r(false); } });
-      $('#cf-ok', m.el).onclick = () => { d = true; m.close(); r(true); };
-    });
-    if (!ok) return;
+    if (this._enviando) return; this._enviando = true;
+    const qtd = this.cart.reduce((a, l) => a + l.qty, 0), total = this.cartTotal();
+    const wait = modal({ cls: 'sending', body: `<div class="big-ok"><div class="spin"></div><h2 style="font-size:30px">Enviando para a cozinha…</h2><p class="muted" style="margin:0">Comanda ${n}</p></div>` });
     try {
       await Biz.submitOrder({ comanda: n, mesa: this.mesa, lines: this.cart, origin: 'tablet', deviceId: this.deviceId });
-      this.cart = []; this.renderCartbar();
-      const m = modal({ body: `<div class="big-ok"><div class="circle">${ico('check')}</div><h2 style="font-size:34px">Pedido enviado!</h2><p class="muted" style="margin:0">Comanda ${n}. Já estamos preparando.</p></div>`, foot: '<button class="btn primary big" data-x style="width:100%">Voltar ao cardápio</button>' });
-      setTimeout(() => m.close(), 6000);
-    } catch (e) { console.error(e); toast('Não foi possível enviar. Verifique a internet e tente de novo.', 'bad'); }
+      this.cart = []; this.renderCartbar(); wait.close();
+      const m = modal({ body: `<div class="big-ok"><div class="circle">${ico('check')}</div><h2 style="font-size:38px">Pedido enviado!</h2><div style="font-family:var(--f-display);font-size:28px;font-weight:700">Comanda ${n}</div><p class="muted" style="margin:0">${plural(qtd, 'item', 'itens')} · ${brl(total)}${this.mesa ? ` · Mesa ${this.mesa}` : ''}<br>Já foi para a cozinha. Não precisa apertar mais nada.</p></div>`, foot: '<button class="btn primary big" data-x style="width:100%">Voltar ao cardápio</button>' });
+      setTimeout(() => m.close(), 7000);
+    } catch (e) { console.error(e); wait.close(); modal({ title: 'Pedido NÃO enviado', body: '<p style="margin:0">Não foi possível enviar agora. Verifique a internet e toque em <b>Enviar</b> de novo, ou chame um atendente. Seus itens continuam no carrinho.</p>', foot: '<button class="btn primary big" data-x style="width:100%">Entendi</button>' }); }
+    finally { this._enviando = false; }
   },
 
   async myAccount() {
@@ -2307,6 +2319,7 @@ const PDV = {
   render() {
     if (!this.root) return;
     if (!Store.isStaff()) return renderLogin(this.root, 'Caixa');
+    Biz.migrar();
     if (!Loja.configured()) return this.renderPickLoja();
     if (this.op && this.op.id !== 'gestora' && Store.cache.operators && Object.keys(Store.cache.operators).length && !Store.all('operators').find(o => o.id === this.op.id)) this.op = null;
     if (!this.op) { if (this.root._pp && $('.g-login', this.root)) return; pinScreen(this.root, { area: 'Caixa · ' + (Store.settings().unidade || Loja.nome()), quem: 'equipe', texto: 'Digite seu PIN ou passe o crachá no leitor para abrir o caixa. Fica registrado quem lançou, cancelou e fechou cada conta.', titulo: 'Quem está no caixa?', check: p => Codes.op(p) || Codes.gestora(p), onOk: op => { this.op = { id: op.id, name: op.name, role: op.role }; this.render(); }, demo: Store.mode === 'demo' ? (Loja.cur() === 'palhoca' ? 'Demonstração: PIN 3333 (Caixa Palhoça).' : 'Demonstração: PIN 1111 (Kelli) ou 2222 (Laiane).') : '' }); return; }
@@ -2683,10 +2696,16 @@ const PDV = {
     const changeTot = round2(closed.reduce((a, t) => a + (t.change || 0), 0));
     const movs = (cx.movs || []).slice().sort((x, y) => x.at - y.at);
     const saidas = round2(movs.filter(m => m.tipo === 'saida').reduce((a, m) => a + m.valor, 0)), entradas = round2(movs.filter(m => m.tipo === 'entrada').reduce((a, m) => a + m.valor, 0));
-    by['Dinheiro'] = round2(vendaDin - changeTot + (cx.troco || 0) + entradas - saidas);
+    /* adicionais da refeição que o funcionário pagou na hora, no caixa */
+    const fim = cx.closedAt || Date.now() + 1;
+    const equipePago = Store.all('equipe').filter(e => e.pago && e.pago.caixa && e.pago.at >= cx.openedAt && e.pago.at <= fim && e.aDescontar > 0);
+    const eqTot = round2(equipePago.reduce((a, e) => a + e.aDescontar, 0));
+    equipePago.forEach(e => { const f = e.pago.forma || 'Dinheiro'; if (f !== 'Dinheiro') by[f] = round2((by[f] || 0) + e.aDescontar); });
+    const eqDin = round2(equipePago.filter(e => (e.pago.forma || 'Dinheiro') === 'Dinheiro').reduce((a, e) => a + e.aDescontar, 0));
+    by['Dinheiro'] = round2(vendaDin - changeTot + (cx.troco || 0) + entradas - saidas + eqDin);
     const methods = [...new Set([...s.paymentMethods, ...Object.keys(by)])];
     const total = round2(closed.reduce((a, t) => a + t.total, 0));
-    return { closed, by, methods, total, movs, saidas, entradas, vendaDin, changeTot };
+    return { closed, by, methods, total, movs, saidas, entradas, vendaDin, changeTot, equipePago, eqTot, eqDin };
   },
   fechamentoLines(cx, r, counted) {
     const s = Store.settings(), w = Print.cols(Biz.physPrinter(s.contaPrinter)), h = Math.floor(w / 2);
@@ -2694,8 +2713,10 @@ const PDV = {
     L.push({ t: Print.lr('Contas fechadas', String(r.closed.length), w), s: 'n' }, { t: Print.lr('FATURADO', brl(r.total), h), s: 'big' }, Print.hr());
     L.push({ t: 'DINHEIRO NA GAVETA', s: 'b' }, { t: Print.lr('Troco inicial', money(cx.troco || 0), w), s: 'n' }, { t: Print.lr('Vendas em dinheiro', money(r.vendaDin), w), s: 'n' });
     if (r.changeTot) L.push({ t: Print.lr('Troco dado', '-' + money(r.changeTot), w), s: 'n' });
+    if (r.eqDin) L.push({ t: Print.lr('Funcionários (pago na hora)', money(r.eqDin), w), s: 'n' });
     r.movs.forEach(m => L.push({ t: Print.lr(`${m.tipo === 'saida' ? 'Retirada' : 'Reforço'} ${fmtTime(m.at)}${m.motivo ? ' ' + m.motivo : ''}`.slice(0, w - 12), (m.tipo === 'saida' ? '-' : '+') + money(m.valor), w), s: 'n' }));
     L.push({ t: Print.lr('Esperado na gaveta', brl(r.by['Dinheiro'] || 0), w), s: 'b' }, Print.hr());
+    if (r.eqTot) L.push({ t: Print.lr(`Recebido de funcionários (${r.equipePago.length})`, money(r.eqTot), w), s: 'n' }, { t: '  já somado nas formas abaixo', s: 'n' });
     L.push({ t: Print.lr('Forma', counted ? 'Esperado / Contado' : 'Valor', w), s: 'b' });
     r.methods.forEach(mt => { const e = r.by[mt] || 0, has = counted && counted[mt] != null; if (!e && !has) return; L.push({ t: Print.lr(mt, counted ? `${money(e)} / ${has ? money(counted[mt]) : '—'}` : money(e), w), s: 'n' }); if (has) { const d = round2(counted[mt] - e); L.push({ t: Print.lr(d ? '  diferença' : '  conferido', d ? (d > 0 ? '+' : '') + money(d) : 'OK', w), s: 'b' }); } });
     L.push(Print.hr(), { t: 'Impresso em ' + fmtDT(Date.now()), s: 'c' }, { t: '', s: 'n' }, { t: '', s: 'n' }, { t: '_'.repeat(Math.min(w, 36)), s: 'c' }, { t: 'Assinatura do operador', s: 'c' }, Print.hr());
@@ -2744,7 +2765,7 @@ const PDV = {
         ${r.movs.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Hora</th><th>Tipo</th><th>Motivo</th><th>Quem</th><th class="r">Valor</th></tr></thead><tbody>${r.movs.slice().reverse().map(m => `<tr><td class="num">${fmtTime(m.at)}</td><td>${m.tipo === 'saida' ? '<span class="pill bad">retirada</span>' : '<span class="pill ok">reforço</span>'}</td><td>${esc(m.motivo || '')}</td><td>${esc(m.by || '')}</td><td class="r num"><b>${m.tipo === 'saida' ? '-' : '+'}${brl(m.valor)}</b></td></tr>`).join('')}</tbody></table></div>` : '<p class="muted" style="margin:0">Nenhuma retirada até agora. Use "Retirar dinheiro" quando tirar dinheiro da gaveta (sangria, pagamento, depósito).</p>'}</div>
       <div class="card col"><h3>Fechar caixa</h3><p class="muted" style="margin:0">Conte a gaveta e confira a maquininha. O sistema mostra a diferença.</p>
       <div class="table-wrap"><table class="t"><thead><tr><th>Forma</th><th class="r">Esperado</th><th class="r">Contado</th><th class="r">Diferença</th></tr></thead><tbody>
-      ${methods.map(mt => `<tr><td>${esc(mt)}${mt === 'Dinheiro' ? '<div class="muted small">troco inicial + vendas − troco dado − retiradas + reforços</div>' : ''}</td><td class="r num">${brl(by[mt] || 0)}</td><td class="r"><input class="input num" data-cnt="${esc(mt)}" data-exp="${by[mt] || 0}" style="width:110px;text-align:right;min-height:34px;padding:4px 8px" inputmode="decimal" placeholder="0,00"></td><td class="r num" data-diff="${esc(mt)}">—</td></tr>`).join('')}
+      ${methods.map(mt => `<tr><td>${esc(mt)}${mt === 'Dinheiro' ? '<div class="muted small">troco inicial + vendas − troco dado − retiradas + reforços + funcionários que pagaram na hora</div>' : ''}</td><td class="r num">${brl(by[mt] || 0)}</td><td class="r"><input class="input num" data-cnt="${esc(mt)}" data-exp="${by[mt] || 0}" style="width:110px;text-align:right;min-height:34px;padding:4px 8px" inputmode="decimal" placeholder="0,00"></td><td class="r num" data-diff="${esc(mt)}">—</td></tr>`).join('')}
       </tbody></table></div><button class="btn primary big" id="cx-close" style="align-self:flex-start">Fechar caixa e imprimir resumo</button></div>${this.closedTodayHtml()}`;
     this.wireClosedToday(pg);
     $('#cx-out', pg).onclick = () => this.movCaixa(cx, 'saida');
@@ -2821,6 +2842,7 @@ const Gestora = {
   async render() {
     if (!this.root) return;
     if (!Store.isStaff()) return renderLogin(this.root, 'Gestora');
+    Biz.migrar();
     if (!this.unlocked) {
       if (this.root._pp && $('.g-login', this.root)) return;
       pinScreen(this.root, { area: 'Área da gestora', quem: 'gestora', texto: `Digite seu PIN ou passe o crachá no leitor para acompanhar ${Loja.multi() ? 'as duas lojas' : 'a loja'}.`, titulo: 'PIN de gestora', check: p => Codes.gestora(p), onOk: () => { this.unlocked = true; this.render(); }, demo: Store.mode === 'demo' ? 'Demonstração: PIN 1234.' : '' });
@@ -3276,7 +3298,7 @@ const Gestora = {
         <div class="row"><label class="field grow"><span>Pré-conta e fechamento</span>${sel(`data-lcp="${l.id}"`, l.contaPrinter)}</label><label class="field grow"><span>Chamado de garçom</span>${sel(`data-lch="${l.id}"`, l.chamadoPrinter)}</label></div>
         <p class="muted small" style="margin:0">${l.mesas || 20} mesas e ${l.comandas || 60} comandas (muda em Mesas e comandas).</p></div>`; }).join('')}</div>
       <div class="card"><h3 style="margin-bottom:12px">Tablet</h3><div class="row" style="margin-bottom:14px"><label class="field"><span>Senha do tablet (caixa)</span><input class="input num" id="cf-tp" maxlength="6" inputmode="numeric" value="${esc(s.tabletPin || '')}" style="width:140px"></label><span class="muted small grow" style="align-self:flex-end">Segure o botão "Mesa" no tablet para abrir as opções. Trocar de mesa e sair do aplicativo pedem esta senha ou a da gestora.</span></div><div class="row" style="margin-bottom:14px;align-items:flex-end"><label class="row" style="gap:10px"><span class="switch"><input type="checkbox" id="cf-sl" ${(s.tabletSleep || {}).on !== false ? 'checked' : ''}><i></i></span><b>Economia de bateria</b></label><label class="field"><span>Apagar a tela depois de</span><span class="row" style="gap:6px"><input class="input num" id="cf-slm" type="number" min="1" max="60" value="${(s.tabletSleep || {}).min || 3}" style="width:80px"> minutos sem uso</span></label><span class="muted small grow">A tela fica preta com o brilho no mínimo. Um toque acende de novo, sem fazer pedido.</span></div><div class="col">${F.map(([k, t, d]) => `<label class="row" style="align-items:flex-start;gap:12px"><span class="switch"><input type="checkbox" data-ft="${k}" ${s.features[k] ? 'checked' : ''}><i></i></span><span><b>${t}</b><br><span class="muted small">${d}</span></span></label>`).join('')}</div></div>
-      <div class="grid-2"><div class="card col"><h3>Caixa</h3><label class="row"><span class="switch"><input type="checkbox" id="cf-cpin" ${s.cancelPin ? 'checked' : ''}><i></i></span> Pedir PIN de gestora para cancelar</label><label class="field"><span>Taxa de serviço padrão (%)</span><input class="input num" id="cf-fee" value="${s.serviceFeeDefault || 0}" style="width:100px"></label><label class="field"><span>Formas de pagamento (uma por linha)</span>${list('cf-pm', s.paymentMethods)}</label></div>
+      <div class="grid-2"><div class="card col"><h3>Caixa</h3><label class="row"><span class="switch"><input type="checkbox" id="cf-cpin" ${s.cancelPin ? 'checked' : ''}><i></i></span> Pedir PIN de gestora para cancelar</label><label class="field"><span>Taxa de serviço padrão (%)</span><input class="input num" id="cf-fee" value="${s.serviceFeeDefault || 0}" style="width:100px"></label><label class="field"><span>Formas de pagamento (uma por linha)</span>${list('cf-pm', s.paymentMethods)}<span class="muted small">Para criar uma forma nova, escreva numa linha nova e clique em Salvar. Para tirar, apague a linha. Aparece no caixa, no fechamento e nos relatórios.</span></label></div>
         <div class="card col"><h3>Chamar garçom e pesquisa</h3><label class="field"><span>Opções rápidas do chamado (uma por linha)</span>${list('cf-wo', s.waiterOptions)}</label><label class="field"><span>Notas da pesquisa (uma por linha)</span>${list('cf-sm', s.survey.metrics)}</label><label class="field"><span>"Como nos conheceu?" (uma por linha)</span>${list('cf-ss', s.survey.sources)}</label></div></div>
       ${Store.mode === 'demo' ? `<div class="card row"><div class="grow"><h3>Demonstração</h3><p class="muted small" style="margin:4px 0 0">Apaga os pedidos de teste e volta o cardápio ao exemplo inicial.</p></div><button class="btn danger" id="cf-reset">Zerar demonstração</button></div>` : ''}`;
     const lines = id => $(id, pg).value.split('\n').map(x => x.trim()).filter(Boolean);
@@ -3503,7 +3525,7 @@ const Equipe = {
   pessoa(nome) { return this.pessoas().find(p => this.k(p.nome) === this.k(nome)) || null; },
   mesIni() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); },
   /* quanto a pessoa já consumiu (a descontar) nos lançamentos dados */
-  gastoDe(nome, rs) { return round2((rs || []).filter(r => this.val(r) && this.k(r.nome) === this.k(nome)).reduce((a, r) => a + (r.aDescontar || 0), 0)); },
+  gastoDe(nome, rs) { return round2((rs || []).filter(r => this.val(r) && !r.adiant && this.k(r.nome) === this.k(nome)).reduce((a, r) => a + (r.aDescontar || 0), 0)); },
   limiteHtml(gasto, lim) {
     if (!lim) return '<span class="muted small">sem limite</span>';
     const pc = Math.min(100, gasto / lim * 100), cor = gasto > lim ? 'var(--bad)' : pc >= 80 ? '#c98a00' : 'var(--accent)';
@@ -3539,7 +3561,9 @@ const Equipe = {
     const liq = r.liquido != null ? r.liquido : r.aDescontar;
     if (r.desconto) L.push({ t: Print.lr(`Desconto funcionário ${r.desconto}%`, '-' + money(r.total - liq), w), s: 'n' });
     if (r.voucherUsado) L.push({ t: Print.lr('Pago com voucher', '-' + money(r.voucherUsado), w), s: 'b' }, { t: Print.lr('SALDO VOUCHER', brl(r.voucherSaldo), Math.floor(w / 2)), s: 'big' });
-    L.push({ t: Print.lr('A DESCONTAR', brl(r.aDescontar), Math.floor(w / 2)), s: 'big' }, { t: '', s: 'n' }, { t: r.voucherUsado && !r.aDescontar ? 'Confirmo o uso do meu voucher.' : 'Autorizo o desconto do valor acima.', s: 'c' }, { t: '', s: 'n' }, { t: '', s: 'n' }, { t: '_'.repeat(Math.min(w, 36)), s: 'c' }, { t: 'Assinatura', s: 'c' }, Print.hr());
+    if (r.pago && r.aDescontar) L.push({ t: Print.lr('PAGO NA HORA', brl(r.aDescontar), Math.floor(w / 2)), s: 'big' }, { t: 'Forma: ' + (r.pago.forma || ''), s: 'cb' }, { t: '', s: 'n' }, { t: 'Nada a descontar.', s: 'c' });
+    else L.push({ t: Print.lr('A DESCONTAR', brl(r.aDescontar), Math.floor(w / 2)), s: 'big' }, { t: '', s: 'n' }, { t: r.voucherUsado && !r.aDescontar ? 'Confirmo o uso do meu voucher.' : 'Autorizo o desconto do valor acima.', s: 'c' });
+    L.push( { t: '', s: 'n' }, { t: '', s: 'n' }, { t: '_'.repeat(Math.min(w, 36)), s: 'c' }, { t: 'Assinatura', s: 'c' }, Print.hr());
     Biz.print(s.contaPrinter || 'EPSON', 'equipe', L);
   },
 
@@ -3568,6 +3592,101 @@ const Equipe = {
     });
   },
 
+  /* ---------- GESTORA: lançar o que esqueceram no caixa e adiantamentos ---------- */
+  escolherPessoa(titulo, sub) {
+    return new Promise(res => {
+      const ps = this.pessoas(); let done = false, q = '';
+      if (!ps.length) { toast('Cadastre as pessoas em "Pessoas e limites" primeiro', 'bad'); return res(null); }
+      const m = modal({ title: titulo, wide: true, body: '', foot: '<button class="btn" data-x>Cancelar</button>', onClose: () => { if (!done) res(null); } });
+      const draw = () => {
+        const k = stripAcc(q.toLowerCase()), l = ps.filter(p => !k || stripAcc(p.nome.toLowerCase()).includes(k));
+        $('.body', m.el).innerHTML = `<p class="muted" style="margin:0">${esc(sub)}</p><input class="input" id="ep-q" type="search" placeholder="Buscar nome" value="${esc(q)}">
+          <div class="vu-grid">${l.map(p => `<button class="vu-btn" data-pn="${esc(p.nome)}"><b>${esc(p.nome)}</b><span>${p.tipo === 'entregador' ? 'entregador' : 'funcionário'}</span>${Loja.multi() ? `<small>${esc(Loja.curto(Loja.of(p)))}</small>` : ''}</button>`).join('') || '<p class="muted">Ninguém com esse nome.</p>'}</div>`;
+        const qi = $('#ep-q', m.el); qi.oninput = debounce(() => { q = qi.value; draw(); const n = $('#ep-q', m.el); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 150);
+      };
+      m.el.addEventListener('click', e => { const b = e.target.closest('[data-pn]'); if (!b) return; done = true; m.close(); res(b.dataset.pn); });
+      draw(); setTimeout(() => $('#ep-q', m.el)?.focus(), 50);
+    });
+  },
+  dtLocal(t = Date.now()) { const d = new Date(t); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`; },
+  impOpt(loja) { return `<div class="card row imp-opt" style="padding:10px 12px;gap:10px;align-items:center"><label class="row" style="gap:10px"><span class="switch"><input type="checkbox" class="io-k" checked><i></i></span><b>Imprimir no caixa para assinar?</b></label>${Loja.multi() ? `<select class="input io-l" style="width:auto;margin-left:auto">${Loja.list().map(l => `<option value="${l.id}" ${l.id === loja ? 'selected' : ''}>Caixa ${esc(Loja.curto(l.id))}</option>`).join('')}</select>` : ''}</div>`; },
+  impLer(el, loja) { const k = $('.io-k', el); return k && k.checked ? (($('.io-l', el) || {}).value || loja) : null; },
+  imprimirNaLoja(loja, fn) { Loja._force = loja; try { fn(); } finally { Loja._force = null; } },
+  async consumoEsquecido(done) {
+    const nome = await this.escolherPessoa('Consumo esquecido · de quem?', 'Toque na pessoa. Depois você escolhe o que ela pegou e o dia.'); if (!nome) return;
+    const items = await this.pickItems(`${nome} · o que pegou`); if (!items) return;
+    const s = Store.settings(), desc = +s.staffDiscount || 0, saldo = this.saldoDe(nome), loja = Loja.of(this.pessoa(nome));
+    const total = round2(items.reduce((a, l) => a + Biz.lineTotal(l), 0)), liquido = round2(total * (1 - desc / 100));
+    let pagar = saldo > 0.004 ? 'voucher' : 'descontar', forma = this.formasAgora()[0];
+    const m = modal({ title: `Consumo esquecido · ${esc(nome)}`, body: '', foot: '<button class="btn" data-x>Cancelar</button><button class="btn primary" id="ce-ok">Lançar</button>' });
+    const draw = () => {
+      const dt = $('#ce-dt', m.el)?.value || this.dtLocal(), uso = pagar === 'voucher' ? round2(Math.min(saldo, liquido)) : 0;
+      $('.body', m.el).innerHTML = `<div class="card col" style="gap:4px;padding:12px">${items.map(l => `<div class="kv"><span>${l.qty}x ${esc(l.name)}</span><b class="num">${brl(Biz.lineTotal(l))}</b></div>`).join('')}</div>
+        <div class="kv"><span>Total</span><b>${brl(total)}</b></div>${desc ? `<div class="kv"><span>Desconto funcionário ${desc}%</span><b>-${brl(total - liquido)}</b></div>` : ''}
+        <label class="field"><span>Quando pegou</span><input class="input" id="ce-dt" type="datetime-local" value="${dt}" style="width:230px"></label>
+        <div class="seg3"><button data-cp="voucher" class="${pagar === 'voucher' ? 'on' : ''}" ${saldo > 0.004 ? '' : 'disabled'}>Do voucher<small>saldo ${brl(saldo)}</small></button><button data-cp="descontar" class="${pagar === 'descontar' ? 'on' : ''}">Descontar<small>no salário</small></button><button data-cp="pago" class="${pagar === 'pago' ? 'on' : ''}">Já pagou<small>na hora</small></button></div>
+        ${pagar === 'pago' ? `<div class="chips">${this.formasAgora().map(f => `<button data-cf="${esc(f)}" class="${forma === f ? 'on' : ''}">${esc(f)}</button>`).join('')}</div>` : ''}
+        ${pagar === 'voucher' && liquido > uso ? `<p class="small" style="margin:0">O voucher cobre ${brl(uso)}. Os outros <b>${brl(liquido - uso)}</b> vão para descontar.</p>` : ''}
+        <div id="ce-io"></div>`;
+    };
+    m.el.addEventListener('click', e => { const b = e.target.closest('[data-cp]'); if (b && !b.disabled) { pagar = b.dataset.cp; draw(); } const f = e.target.closest('[data-cf]'); if (f) { forma = f.dataset.cf; draw(); } });
+    draw(); const io = document.createElement('div'); io.innerHTML = this.impOpt(loja); $('footer', m.el).before(io.firstElementChild);
+    $('#ce-ok', m.el).onclick = async () => {
+      const at = new Date($('#ce-dt', m.el).value).getTime() || Date.now(), uso = pagar === 'voucher' ? round2(Math.min(saldo, liquido)) : 0;
+      const usos = uso ? await this.usarVoucher(nome, uso) : [];
+      const r = { kind: 'consumo', at, loja, nome, tipo: this.tipoDe(nome), items: items.map(l => ({ itemId: l.itemId, name: l.name, catId: l.catId, qty: l.qty, unit: l.unit, opts: l.opts, obs: l.obs, printer: l.printer })), total, desconto: desc, liquido, voucherUsado: uso, voucherUsos: usos, voucherSaldo: round2(saldo - uso), aDescontar: round2(liquido - uso), by: 'Gestora', esquecido: true };
+      if (pagar === 'pago') r.pago = { at: Date.now(), by: 'Gestora', forma };
+      await Store.add('equipe', r);
+      const pl = this.impLer(m.el, loja); if (pl) this.imprimirNaLoja(pl, () => this.printAssinatura(r, 'CONSUMO (LANÇADO DEPOIS)'));
+      m.close(); toast(`Consumo de ${nome} lançado (${fmtDT(at)})`); done && done();
+    };
+  },
+  async refeicaoEsquecida(done) {
+    const nome = await this.escolherPessoa('Refeição esquecida · de quem?', 'Toque na pessoa que comeu e não foi lançada.'); if (!nome) return;
+    const hoje = new Date();
+    const m = modal({ title: `Refeição esquecida · ${esc(nome)}`, body: `<div class="row"><label class="field"><span>Dia</span><input class="input" id="re-d" type="date" value="${hoje.getFullYear()}-${pad2(hoje.getMonth() + 1)}-${pad2(hoje.getDate())}"></label>
+        <div class="seg2 grow" id="re-r" style="align-self:flex-end"><button data-rr="Almoço" class="${hoje.getHours() < 16 ? 'on' : ''}">Almoço</button><button data-rr="Janta" class="${hoje.getHours() >= 16 ? 'on' : ''}">Janta</button></div></div>
+      <label class="field"><span>O que comeu</span><input class="input" id="re-p"></label><label class="field"><span>Custo da refeição (R$)</span><input class="input num" id="re-c" inputmode="decimal" style="width:140px"></label>
+      <p class="muted small" style="margin:0">Preenche sozinho com o prato e o custo cadastrados para o dia escolhido. Não imprime na cozinha.</p>${this.impOpt(Loja.of(this.pessoa(nome)))}`,
+      foot: '<button class="btn" data-x>Cancelar</button><button class="btn primary" id="re-ok">Lançar</button>' });
+    let ref = hoje.getHours() < 16 ? 'Almoço' : 'Janta';
+    const fill = () => { const d = new Date($('#re-d', m.el).value + 'T12:00'); if (isNaN(d)) return; const md = this.menuDia(d.getDay()); $('#re-p', m.el).value = md.domingo ? 'Lanche de domingo' : (md.planejado || md.proteina || 'Prato do dia'); $('#re-c', m.el).value = md.custo ? money(md.custo) : ''; };
+    $('#re-d', m.el).onchange = fill; fill();
+    m.el.addEventListener('click', e => { const b = e.target.closest('[data-rr]'); if (!b) return; ref = b.dataset.rr; $$('[data-rr]', m.el).forEach(x => x.classList.toggle('on', x === b)); });
+    $('#re-ok', m.el).onclick = async () => {
+      const d = new Date($('#re-d', m.el).value + (ref === 'Almoço' ? 'T12:00' : 'T20:00')); if (isNaN(d)) return toast('Escolha o dia', 'bad');
+      const prato = $('#re-p', m.el).value.trim() || 'Prato do dia';
+      const lj = Loja.of(this.pessoa(nome));
+      await Store.add('equipe', { kind: 'refeicao', at: d.getTime(), loja: lj, nome, tipo: this.tipoDe(nome), refeicao: ref, prato, itemId: null, viagem: false, obs: '', custo: num($('#re-c', m.el).value), by: 'Gestora', dia: DIAS[d.getDay()], esquecido: true });
+      const pl = this.impLer(m.el, lj); if (pl) this.imprimirNaLoja(pl, () => { const st = Store.settings(), w = Print.cols(Biz.physPrinter(st.contaPrinter)); Biz.print(st.contaPrinter, 'equipe', [...Print.head(ref.toUpperCase() + ' DA EQUIPE (LANÇADA DEPOIS)'), Print.hr(), { t: nome.toUpperCase(), s: 'cxl' }, { t: fmtDate(d.getTime()) + ' · ' + ref, s: 'cb' }, { t: prato, s: 'c' }, { t: '', s: 'n' }, { t: 'Confirmo que fiz esta refeição.', s: 'c' }, { t: '', s: 'n' }, { t: '', s: 'n' }, { t: '_'.repeat(Math.min(w, 36)), s: 'c' }, { t: 'Assinatura', s: 'c' }, Print.hr()]); });
+      m.close(); toast(`${ref} de ${nome} lançada em ${fmtDate(d.getTime())}`); done && done();
+    };
+  },
+  async adiantamento(done) {
+    const nome = await this.escolherPessoa('Adiantamento · para quem?', 'Valor pago antes do salário. Fica como "a descontar" no relatório da pessoa.'); if (!nome) return;
+    const loja = Loja.of(this.pessoa(nome)), cx = Store.all('caixas').find(c => c.status === 'aberto' && Loja.of(c) === loja);
+    let forma = 'Pix';
+    const m = modal({ title: `Adiantamento · ${esc(nome)}`, body: `<label class="field"><span>Valor (R$)</span><input class="input num" id="ad-v" inputmode="decimal" placeholder="0,00" style="font-size:24px;font-weight:700;max-width:200px"></label>
+      <div class="field"><span>Como foi pago</span><div class="chips" id="ad-f">${['Pix', 'Dinheiro', 'Transferência'].map(f => `<button data-af="${f}" class="${f === forma ? 'on' : ''}">${f}</button>`).join('')}</div></div>
+      <div id="ad-cx"></div>
+      <div class="row"><label class="field"><span>Data</span><input class="input" id="ad-dt" type="datetime-local" value="${this.dtLocal()}" style="width:230px"></label><label class="field grow"><span>Motivo (opcional)</span><input class="input" id="ad-m" placeholder="Ex.: vale do dia 15"></label></div>
+      ${this.impOpt(loja)}`,
+      foot: '<button class="btn" data-x>Cancelar</button><button class="btn primary" id="ad-ok">Registrar adiantamento</button>' });
+    const drawCx = () => { $('#ad-cx', m.el).innerHTML = forma === 'Dinheiro' ? (cx ? `<label class="row small"><input type="checkbox" id="ad-cxk" checked> Saiu da gaveta do caixa aberto de ${esc(Loja.nome(loja))} (registra como retirada)</label>` : `<p class="muted small" style="margin:0">O caixa de ${esc(Loja.nome(loja))} está fechado; o dinheiro não é descontado da gaveta.</p>`) : ''; };
+    m.el.addEventListener('click', e => { const b = e.target.closest('[data-af]'); if (!b) return; forma = b.dataset.af; $$('[data-af]', m.el).forEach(x => x.classList.toggle('on', x === b)); drawCx(); });
+    drawCx(); setTimeout(() => $('#ad-v', m.el).focus(), 50);
+    $('#ad-ok', m.el).onclick = async () => {
+      const valor = round2(num($('#ad-v', m.el).value)); if (!(valor > 0)) return toast('Informe o valor', 'bad');
+      const at = new Date($('#ad-dt', m.el).value).getTime() || Date.now(), motivo = $('#ad-m', m.el).value.trim();
+      const r = { kind: 'consumo', adiant: true, at, loja, nome, tipo: this.tipoDe(nome), items: [{ qty: 1, name: 'Adiantamento' + (motivo ? ' · ' + motivo : ''), unit: valor, opts: [] }], total: valor, desconto: 0, liquido: valor, voucherUsado: 0, voucherUsos: [], aDescontar: valor, by: 'Gestora', forma, motivo };
+      await Store.add('equipe', r);
+      const k = $('#ad-cxk', m.el);
+      if (forma === 'Dinheiro' && cx && k && k.checked) { const cur = Store.get('caixas', cx.id) || cx; await Store.update('caixas', cx.id, { movs: [...(cur.movs || []), { id: uid(), tipo: 'saida', valor, motivo: 'Adiantamento ' + nome, at: Date.now(), by: 'Gestora' }] }); }
+      const pl = this.impLer(m.el, loja); if (pl) this.imprimirNaLoja(pl, () => { const st = Store.settings(), w = Print.cols(Biz.physPrinter(st.contaPrinter)); Biz.print(st.contaPrinter, 'equipe', [...Print.head('ADIANTAMENTO'), Print.hr(), { t: nome.toUpperCase(), s: 'cxl' }, { t: brl(valor), s: 'cxl' }, { t: forma + ' · ' + fmtDT(at), s: 'c' }, ...(motivo ? [{ t: motivo, s: 'c' }] : []), { t: '', s: 'n' }, { t: 'Recebi o valor acima como adiantamento,', s: 'c' }, { t: 'a ser descontado do meu salário.', s: 'c' }, { t: '', s: 'n' }, { t: '', s: 'n' }, { t: '_'.repeat(Math.min(w, 36)), s: 'c' }, { t: 'Assinatura', s: 'c' }, Print.hr()]); });
+      m.close(); toast(`Adiantamento de ${brl(valor)} para ${nome} registrado`); done && done();
+    };
+  },
+
   /* ---------- GESTORA: corrigir um lançamento (voucher ↔ descontar, pago, excluir) ---------- */
   /* lançamento com valor para a pessoa pagar: consumo, ou refeição com adicional pago */
   val(r) { return !!r && (r.kind === 'consumo' || (r.extraTotal || 0) > 0); },
@@ -3587,7 +3706,7 @@ const Equipe = {
     const m = modal({ title: 'Corrigir lançamento', body: '', foot: '<button class="btn" data-x>Fechar</button>' });
     const draw = () => {
       const r = Store.get('equipe', id); if (!r) return m.close();
-      const saldo = this.saldoDe(r.nome), podeVoucher = r.aDescontar > 0.004 && !r.pago && saldo > 0.004;
+      const saldo = this.saldoDe(r.nome), podeVoucher = !r.adiant && r.aDescontar > 0.004 && !r.pago && saldo > 0.004;
       $('.body', m.el).innerHTML = `<div class="kv"><span>${esc(r.nome)}</span><b>${fmtDT(r.at)}</b></div>
         <p class="small" style="margin:0">${r.kind === 'consumo' ? r.items.map(l => `${l.qty}x ${esc(l.name)}`).join(', ') : esc(r.prato || '') + (r.extras ? ` · <b>adicional pago:</b> ${esc(this.extrasTxt(r))}` : '')}</p>
         ${this.val(r) ? `<div class="card col" style="gap:4px;padding:12px"><div class="kv"><span>${r.kind === 'consumo' ? 'Valor' : 'Adicional pago'}</span><b>${brl(r.liquido != null ? r.liquido : r.total)}</b></div><div class="kv"><span>Do voucher</span><b>${brl(r.voucherUsado || 0)}</b></div><div class="kv"><span>${r.pago ? 'Pago pelo funcionário' : 'A descontar no salário'}</span><b>${brl(r.aDescontar || 0)}</b></div>${r.pago ? `<div class="muted small">Pago em ${fmtDT(r.pago.at)}${r.pago.by ? ' · ' + esc(r.pago.by) : ''}${r.pago.forma ? ' · ' + esc(r.pago.forma) : ''}</div>` : ''}<div class="muted small">Saldo de voucher de ${esc(r.nome)}: ${brl(saldo)}</div></div>
@@ -3616,10 +3735,10 @@ const Equipe = {
     rs = rs.filter(r => this.k(r.nome) === this.k(nome)).sort((a, b) => a.at - b.at);
     const pp = this.pessoa(nome), loja = Loja.of(pp), cons = rs.filter(r => this.val(r)), refs = rs.filter(r => r.kind !== 'consumo');
     const sum = f => round2(cons.reduce((a, r) => a + (f(r) || 0), 0));
-    const T = { total: sum(r => r.total), desc: sum(r => round2(r.total - (r.liquido != null ? r.liquido : r.aDescontar + (r.voucherUsado || 0)))), vou: sum(r => r.voucherUsado), aDesc: sum(r => this.devido(r)), pago: sum(r => r.pago ? r.aDescontar : 0) };
+    const T = { adi: sum(r => r.adiant ? r.aDescontar : 0), total: sum(r => r.adiant ? 0 : r.total), desc: sum(r => round2(r.total - (r.liquido != null ? r.liquido : r.aDescontar + (r.voucherUsado || 0)))), vou: sum(r => r.voucherUsado), aDesc: sum(r => this.devido(r)), pago: sum(r => r.pago ? r.aDescontar : 0) };
     const oque = r => r.kind === 'consumo' ? r.items.map(l => `${l.qty}x ${l.name}${(l.opts || []).length ? ' (' + l.opts.map(o => optTxt(o)).join(', ') + ')' : ''}`).join(', ') : `Refeição${r.refeicao ? ' · ' + r.refeicao : ''}${r.prato ? ' · ' + r.prato : ''}${r.extras ? ' + adicional pago: ' + this.extrasTxt(r) : ''}`;
     const linhas = rs.map(r => `<tr><td class="num">${fmtDT(r.at)}</td><td>${esc(oque(r))}</td><td class="r num">${this.val(r) ? brl(r.total) : '–'}</td><td class="r num">${r.voucherUsado ? brl(r.voucherUsado) : '–'}</td><td class="r num"><b>${this.val(r) ? (r.pago ? 'pago ' : '') + brl(r.aDescontar) : '–'}</b></td><td class="small">${esc(r.by || '')}</td></tr>`).join('');
-    const resumo = `<div class="kv"><span>Lançamentos de consumo</span><b>${cons.length}</b></div><div class="kv"><span>Total consumido</span><b>${brl(T.total)}</b></div>${T.desc > 0.004 ? `<div class="kv"><span>Desconto funcionário</span><b>-${brl(T.desc)}</b></div>` : ''}${T.vou ? `<div class="kv"><span>Pago com voucher</span><b>-${brl(T.vou)}</b></div>` : ''}${T.pago ? `<div class="kv"><span>Já pago pelo funcionário</span><b>-${brl(T.pago)}</b></div>` : ''}<div class="kv" style="font-size:18px"><span><b>TOTAL A DESCONTAR</b></span><b>${brl(T.aDesc)}</b></div>${refs.length ? `<div class="kv"><span>Refeições da equipe (sem desconto)</span><b>${refs.length}</b></div>` : ''}`;
+    const resumo = `<div class="kv"><span>Lançamentos de consumo</span><b>${cons.length}</b></div><div class="kv"><span>Total consumido</span><b>${brl(T.total)}</b></div>${T.adi ? `<div class="kv"><span>Adiantamentos</span><b>${brl(T.adi)}</b></div>` : ''}${T.desc > 0.004 ? `<div class="kv"><span>Desconto funcionário</span><b>-${brl(T.desc)}</b></div>` : ''}${T.vou ? `<div class="kv"><span>Pago com voucher</span><b>-${brl(T.vou)}</b></div>` : ''}${T.pago ? `<div class="kv"><span>Já pago pelo funcionário</span><b>-${brl(T.pago)}</b></div>` : ''}<div class="kv" style="font-size:18px"><span><b>TOTAL A DESCONTAR</b></span><b>${brl(T.aDesc)}</b></div>${refs.length ? `<div class="kv"><span>Refeições da equipe (sem desconto)</span><b>${refs.length}</b></div>` : ''}`;
     const m = modal({ title: `Relatório · ${esc(nome)}`, wide: true, body: `<p class="muted" style="margin-top:0">${esc(lbl)}${Loja.multi() ? ' · ' + esc(Loja.nome(loja)) : ''}</p>
       <div class="card col" style="gap:6px">${resumo}</div>
       <div class="table-wrap" style="max-height:45vh;overflow:auto"><table class="t"><thead><tr><th>Data</th><th>O que pegou</th><th class="r">Valor</th><th class="r">Voucher</th><th class="r">A descontar</th><th>Lançado por</th></tr></thead><tbody>${linhas || '<tr><td colspan="6" class="empty">Nada no período.</td></tr>'}</tbody></table></div>`,
@@ -3638,7 +3757,7 @@ const Equipe = {
         const st = Store.settings(), pr = st.contaPrinter || 'EPSON', w = Print.cols(Biz.physPrinter(pr)) || 48, h = Math.floor(w / 2);
         const L = [...Print.head('RELATÓRIO DE CONSUMO'), { t: nome.toUpperCase(), s: 'cxl' }, { t: lbl, s: 'c' }, Print.hr()];
         rs.forEach(r => { L.push({ t: Print.lr(fmtDT(r.at), this.val(r) ? (r.pago ? 'pago ' : '') + brl(r.aDescontar) : 'refeição', w), s: 'b' }); if (r.extras) r.extras.forEach(e => L.push({ t: `  ${r.refeicao || 'Refeição'} + ${e.qty}x ${e.name}`, s: 'n' })); if (r.kind === 'consumo') { r.items.forEach(l => L.push({ t: `  ${l.qty}x ${l.name}`, s: 'n' })); if (r.voucherUsado) L.push({ t: Print.lr('  voucher', '-' + money(r.voucherUsado), w), s: 'n' }); } });
-        L.push(Print.hr(), { t: Print.lr('Total consumido', money(T.total), w), s: 'n' });
+        L.push(Print.hr(), { t: Print.lr('Total consumido', money(T.total), w), s: 'n' }); if (T.adi) L.push({ t: Print.lr('Adiantamentos', money(T.adi), w), s: 'n' });
         if (T.desc > 0.004) L.push({ t: Print.lr('Desconto funcionário', '-' + money(T.desc), w), s: 'n' });
         if (T.vou) L.push({ t: Print.lr('Pago com voucher', '-' + money(T.vou), w), s: 'n' }); if (T.pago) L.push({ t: Print.lr('Já pago', '-' + money(T.pago), w), s: 'n' });
         L.push({ t: Print.lr('A DESCONTAR', brl(T.aDesc), h), s: 'big' });
@@ -3673,14 +3792,14 @@ const Equipe = {
       <div class="kv"><span>Sai do voucher</span><b style="color:var(--accent)">-${brl(uso)}</b></div><div class="kv"><span>Saldo do voucher depois</span><b>${brl(saldo - uso)}</b></div>
       ${aDesc ? `<div class="alert bad">${ico('pause')}<div class="grow">O voucher não cobre tudo: <b>${brl(aDesc)}</b> fica para descontar no salário.</div></div>` : ''}
       <label class="field"><span>Quando pegou</span><input class="input" id="vu-dt" type="datetime-local" value="${dl}" style="width:230px"></label>
-      <label class="row small"><input type="checkbox" id="vu-pr"> Imprimir comprovante na loja para a pessoa assinar</label>`,
+      ${this.impOpt(Loja.of(this.pessoa(nome)))}`,
       foot: `<button class="btn" data-x>Cancelar</button><button class="btn primary" id="vu-ok">Descontar ${brl(uso)}</button>` });
     $('#vu-ok', m.el).onclick = async () => {
       const at = new Date($('#vu-dt', m.el).value).getTime() || Date.now();
       const usos = uso ? await this.usarVoucher(nome, uso) : [];
       const r = { kind: 'consumo', at, loja: Loja.of(this.pessoa(nome)), nome, tipo: this.tipoDe(nome), items: items.map(l => ({ itemId: l.itemId, name: l.name, catId: l.catId, qty: l.qty, unit: l.unit, opts: l.opts, obs: l.obs, printer: l.printer })), total, desconto: desc, liquido, voucherUsado: uso, voucherUsos: usos, voucherSaldo: round2(saldo - uso), aDescontar: aDesc, by, origem: 'gestora' };
       await Store.add('equipe', r);
-      if ($('#vu-pr', m.el).checked) { Loja._force = r.loja; try { this.printAssinatura(r); } finally { Loja._force = null; } }
+      const pl = this.impLer(m.el, r.loja); if (pl) this.imprimirNaLoja(pl, () => this.printAssinatura(r));
       m.close(); toast(`${brl(uso)} descontado do voucher de ${nome}. Saldo: ${brl(r.voucherSaldo)}`);
     };
   },
@@ -3726,23 +3845,29 @@ const Equipe = {
     else { const cats = Store.all('categories').filter(c => /minuta|prato/i.test(c.name)).map(c => c.id); Store.all('items').filter(i => cats.includes(i.catId)).forEach(i => (i.groups || []).filter(g => g.kind === 'add').forEach(add)); }
     return Object.values(out).sort((a, b) => a.price - b.price || a.name.localeCompare(b.name));
   },
+  formasAgora() { return (Store.settings().paymentMethods || ['Dinheiro', 'Pix']).filter(f => !/fidelidade|vale/i.test(f)); },
   extrasOpts(r) { return (r.extras || []).map(e => ({ name: e.name + ' (pago)', price: e.price, kind: 'add', qty: e.qty })); },
   assinaturaExtras(r) { return Object.assign({}, r, { items: (r.extras || []).map(e => ({ qty: e.qty, name: `${e.name} (${r.refeicao || 'refeição'})`, unit: e.price, opts: [] })), total: r.extraTotal, liquido: r.extraTotal, desconto: 0 }); },
   pedirRefeicao(op) {
     const md = this.menuDia(); const hora = new Date().getHours();
     const lanches = (md.lanches || []).map(id => Store.get('items', id)).filter(Boolean);
-    let ref = hora < 16 ? 'Almoço' : 'Janta', escolha = md.domingo ? (lanches[0] && lanches[0].id) : 'prato', viagem = false, extras = [], pagar = null;
+    const dom = this.menuDia(0), domLanches = (dom.lanches || []).map(id => Store.get('items', id)).filter(Boolean);
+    /* entregador pode trocar a comida por lanche em qualquer dia, nas lojas liberadas pela gestora */
+    const podeLanche = nome => !md.domingo && !!nome && this.tipoDe(nome) === 'entregador' && !!(Store.base().entregLanche || {})[Loja.w()] && domLanches.length > 0;
+    let ref = hora < 16 ? 'Almoço' : 'Janta', escolha = md.domingo ? (lanches[0] && lanches[0].id) : 'prato', viagem = false, extras = [], pagar = null, forma = this.formasAgora()[0];
     const podeLevar = () => true;
     const m = modal({ title: 'Refeição da equipe', wide: true, body: '', foot: `<button class="btn" data-x>Cancelar</button><button class="btn primary big" id="er-ok">Enviar para a cozinha</button>` });
     const draw = () => {
       const nome = $('#er-n', m.el)?.value || '', obs = $('#er-o', m.el)?.value || '';
+      const ent = podeLanche(nome.trim()), lan = md.domingo ? lanches : ent ? domLanches : [];
+      if (escolha !== 'prato' && !lan.some(i => i.id === escolha)) escolha = md.domingo && lanches[0] ? lanches[0].id : 'prato';
       $('.body', m.el).innerHTML = `${this.nomesDatalist()}
         <div class="row"><label class="field grow"><span>Nome (funcionário ou entregador)</span><input class="input" id="er-n" list="eq-nomes" autocomplete="off" value="${esc(nome)}" placeholder="Digite ou escolha"></label></div>
         <div class="seg2" id="er-r"><button data-r="Almoço" class="${ref === 'Almoço' ? 'on' : ''}">Almoço</button><button data-r="Janta" class="${ref === 'Janta' ? 'on' : ''}">Janta</button></div>
-        <div class="col"><span class="label">${md.dia}${md.domingo ? ' · escolha um lanche' : ' · prato do dia'}</span>
+        <div class="col"><span class="label">${md.dia}${md.domingo ? ' · escolha um lanche' : ent ? ' · prato do dia ou um lanche (entregador)' : ' · prato do dia'}</span>
           <div class="pick-grid eq-pick">
             ${!md.domingo || !lanches.length ? `<button class="eq-opt ${escolha === 'prato' ? 'on' : ''}" data-e="prato"><b>${esc(md.proteina || 'Prato do dia')}</b><span>${esc(md.acomp)}${md.trocado ? ' · <b>trocado hoje</b>' : ''}</span></button>` : ''}
-            ${lanches.map(i => `<button class="eq-opt ${escolha === i.id ? 'on' : ''}" data-e="${i.id}"><b>${esc(i.name)}</b><span>lanche de domingo</span></button>`).join('')}
+            ${lan.map(i => `<button class="eq-opt ${escolha === i.id ? 'on' : ''}" data-e="${i.id}"><b>${esc(i.name)}</b><span>${md.domingo ? 'lanche de domingo' : 'lanche · só entregador'}</span></button>`).join('')}
           </div></div>
         <label class="field"><span>O que retirar (opcional)</span><textarea class="input" id="er-o" maxlength="140" placeholder="Ex.: sem feijão, sem tomate">${esc(obs)}</textarea></label>
         ${(() => {
@@ -3754,9 +3879,10 @@ const Equipe = {
             <div class="chips">${ops.map((o, i) => `<button data-ax="${i}">+ ${esc(o.name)} · ${brl(o.price)}</button>`).join('')}<button data-axo>+ Outro valor</button></div>
             ${extras.length ? `${extras.map((e, i) => `<div class="kv"><span>${e.qty}x ${esc(e.name)}</span><span class="row" style="gap:6px"><b class="num">${brl(e.price * e.qty)}</b><button class="icon-btn" data-axr="${i}" aria-label="Remover">${ico('x')}</button></span></div>`).join('')}
               <div class="kv"><span><b>Total do adicional</b></span><b>${brl(tot)}</b></div>
-              <div class="seg2" id="er-pg"><button data-pg="voucher" class="${pagar === 'voucher' ? 'on' : ''}" ${saldo > 0.004 ? '' : 'disabled'}>Do voucher${nome.trim() ? ` (saldo ${brl(saldo)})` : ''}</button><button data-pg="descontar" class="${pagar === 'descontar' ? 'on' : ''}">Descontar no salário</button></div>
+              <div class="seg3" id="er-pg"><button data-pg="voucher" class="${pagar === 'voucher' ? 'on' : ''}" ${saldo > 0.004 ? '' : 'disabled'}>Do voucher${nome.trim() ? `<small>saldo ${brl(saldo)}</small>` : ''}</button><button data-pg="descontar" class="${pagar === 'descontar' ? 'on' : ''}">Descontar<small>no salário</small></button><button data-pg="agora" class="${pagar === 'agora' ? 'on' : ''}">Pagar agora<small>no caixa</small></button></div>
+              ${pagar === 'agora' ? `<div class="chips">${this.formasAgora().map(f => `<button data-pf="${esc(f)}" class="${forma === f ? 'on' : ''}">${esc(f)}</button>`).join('')}</div>` : ''}
               ${pagar === 'voucher' && tot > uso ? `<p class="small" style="margin:0">O voucher cobre ${brl(uso)}. Os outros <b>${brl(tot - uso)}</b> vão para descontar.</p>` : ''}
-              <p class="muted small" style="margin:0">Sai junto com a ${ref.toLowerCase()} na cozinha e um comprovante no caixa para assinar. Não entra no custo das refeições.</p>` : ''}</div>`;
+              <p class="muted small" style="margin:0">Sai junto com ${ref === 'Almoço' ? 'o almoço' : 'a janta'} na cozinha e um comprovante no caixa${pagar === 'agora' ? ' (pago na hora)' : ' para assinar'}. Não entra no custo das refeições.</p>` : ''}</div>`;
         })()}
         ${podeLevar() ? `<div class="seg2" id="er-v"><button data-v="0" class="${viagem ? '' : 'on'}">Comer aqui</button><button data-v="1" class="${viagem ? 'on' : ''}">Para levar</button></div>` : `<p class="muted small" style="margin:0">Comer aqui. Funcionário não pode levar a janta (só entregadores).</p>`}
 `;
@@ -3769,6 +3895,7 @@ const Equipe = {
       const ax = e.target.closest('[data-ax]'); if (ax) { const o = this._erOps[+ax.dataset.ax]; const ex = extras.find(x => x.name === o.name && x.price === o.price); ex ? ex.qty++ : extras.push({ name: o.name, price: o.price, qty: 1 }); draw(); }
       const axr = e.target.closest('[data-axr]'); if (axr) { extras.splice(+axr.dataset.axr, 1); draw(); }
       const pgb = e.target.closest('[data-pg]'); if (pgb && !pgb.disabled) { pagar = pgb.dataset.pg; draw(); }
+      const pfb = e.target.closest('[data-pf]'); if (pfb) { forma = pfb.dataset.pf; draw(); }
       if (e.target.closest('[data-axo]')) {
         const mo = modal({ title: 'Adicional pago', body: `<label class="field"><span>O que é</span><input class="input" id="axo-n" placeholder="Ex.: Mais uma proteína"></label><label class="field"><span>Valor (R$)</span><input class="input num" id="axo-v" inputmode="decimal" placeholder="0,00" style="max-width:160px"></label>`, foot: '<button class="btn" data-x>Cancelar</button><button class="btn primary" id="axo-ok">Adicionar</button>' });
         setTimeout(() => $('#axo-n', mo.el).focus(), 50);
@@ -3780,18 +3907,19 @@ const Equipe = {
       const obs = $('#er-o', m.el).value.trim(); if (!podeLevar()) viagem = false;
       const it = escolha !== 'prato' ? Store.get('items', escolha) : null;
       const prato = it ? it.name : (md.proteina || 'Prato do dia');
-      const custo = it ? (+md.custoLanche[it.id] || +Store.settings().staffLancheCusto || 0) : md.custo;
+      const custo = it ? (+(md.custoLanche || {})[it.id] || +(dom.custoLanche || {})[it.id] || +Store.settings().staffLancheCusto || 0) : md.custo;
       const r = { kind: 'refeicao', at: Date.now(), nome, tipo: this.tipoDe(nome), refeicao: ref, prato, itemId: it ? it.id : null, viagem, obs, custo, by: op, dia: md.dia };
       if (extras.length) {
         const tot = round2(extras.reduce((a, e) => a + e.price * e.qty, 0)), saldo = this.saldoDe(nome), uso = pagar === 'voucher' ? round2(Math.min(saldo, tot)) : 0;
         const usos = uso ? await this.usarVoucher(nome, uso) : [];
         Object.assign(r, { extras: extras.map(e => Object.assign({}, e)), extraTotal: tot, total: tot, liquido: tot, desconto: 0, voucherUsado: uso, voucherUsos: usos, voucherSaldo: round2(saldo - uso), aDescontar: round2(tot - uso) });
+        if (pagar === 'agora') r.pago = { at: Date.now(), by: op, forma, caixa: true };
       }
       await Store.add('equipe', r);
       this.printKitchen(`${ref.toUpperCase()} DA EQUIPE`, nome, [{ qty: 1, name: prato, opts: this.extrasOpts(r), acomp: it ? '' : md.acomp, printer: it ? Biz.printerFor(it) : 'POS' }], { viagem, obs: obs ? 'RETIRAR: ' + obs : '', refeicao: ref, by: op, at: r.at });
       if (r.extras) this.printAssinatura(this.assinaturaExtras(r), `ADICIONAL ${ref.toUpperCase()} DA EQUIPE`);
       await this.salvarPessoa(nome);
-      m.close(); toast(`${ref} de ${nome} enviada para a cozinha` + (r.extras ? ` · adicional ${brl(r.extraTotal)} ${r.voucherUsado ? 'do voucher' : 'a descontar'}` : ''));
+      m.close(); toast(`${ref} de ${nome} enviada para a cozinha` + (r.extras ? ` · adicional ${brl(r.extraTotal)} ${r.pago ? 'pago no ' + r.pago.forma : r.voucherUsado ? 'do voucher' : 'a descontar'}` : ''));
     };
     draw(); setTimeout(() => $('#er-n', m.el)?.focus(), 50);
   },
@@ -3809,7 +3937,7 @@ const Equipe = {
       ${(() => { const by = {}; Store.all('vouchers').filter(v => v.saldo > 0.004).forEach(v => by[v.nome] = round2((by[v.nome] || 0) + v.saldo)); const l = Object.entries(by).sort((a, b) => a[0].localeCompare(b[0])); return l.length ? `<div class="card"><span class="label">Vouchers com saldo</span><div class="chips" style="margin-top:8px">${l.map(([n, v]) => `<span class="pill ok" style="font-size:14px;padding:5px 12px">${esc(n)} · ${brl(v)}</span>`).join('')}</div></div>` : ''; })()}
       <h3>Lançados hoje</h3>
       <div class="table-wrap"><table class="t"><thead><tr><th>Hora</th><th>Nome</th><th>Tipo</th><th>O quê</th><th class="r">Valor</th><th>Lançado por</th><th></th></tr></thead><tbody>
-      ${hoje.map(r => `<tr><td class="num">${fmtTime(r.at)}</td><td><b>${esc(r.nome)}</b>${r.tipo === 'entregador' ? ' <span class="pill">entregador</span>' : ''}</td><td>${r.kind === 'consumo' ? '<span class="pill warn">a descontar</span>' : `<span class="pill ok">${esc(r.refeicao)}</span>`}</td>
+      ${hoje.map(r => `<tr><td class="num">${fmtTime(r.at)}</td><td><b>${esc(r.nome)}</b>${r.tipo === 'entregador' ? ' <span class="pill">entregador</span>' : ''}</td><td>${r.adiant ? '<span class="pill info">adiantamento</span>' : r.kind === 'consumo' ? '<span class="pill warn">a descontar</span>' : `<span class="pill ok">${esc(r.refeicao)}</span>`}</td>
         <td>${r.kind === 'consumo' ? r.items.map(l => `${l.qty}x ${esc(l.name)}`).join(', ') : esc(r.prato) + (r.extras ? ` <span class="pill warn">+ ${esc(this.extrasTxt(r))}</span>` : '') + (r.viagem ? ' <span class="pill warn">levar</span>' : '') + (r.obs ? `<div class="muted small">${esc(r.obs)}</div>` : '')}</td>
         <td class="r num">${this.val(r) ? brl(r.aDescontar) + (r.voucherUsado ? `<div class="muted small">voucher ${brl(r.voucherUsado)}</div>` : '') : '<span class="muted">–</span>'}</td><td>${r.by ? `<span class="pill info">${esc(r.by)}</span>` : ''}</td><td class="r" style="white-space:nowrap"><button class="btn sm" data-en="${r.id}">${ico('edit')} Nome</button> <button class="btn sm" data-rp="${r.id}">${ico('printer')} Reimprimir</button></td></tr>`).join('') || '<tr><td colspan="7" class="empty">Nada lançado hoje.</td></tr>'}
       </tbody></table></div>`;
@@ -3889,14 +4017,15 @@ const Equipe = {
         <p class="muted small" style="margin:0">A projeção considera 26 dias de funcionamento no mês (terça a domingo).</p>`;
     } else if (G.eqTab === 'lanc') {
       const sit = G.eqSit || '', cons = rs.filter(r => this.val(r));
-      const f = r => !sit || (this.val(r) && (sit === 'descontar' ? this.devido(r) > 0 : sit === 'voucher' ? r.voucherUsado > 0 : sit === 'pago' ? !!r.pago : true));
+      const f = r => !sit || (sit === 'adiant' ? !!r.adiant : this.val(r) && (sit === 'descontar' ? this.devido(r) > 0 : sit === 'voucher' ? r.voucherUsado > 0 : sit === 'pago' ? !!r.pago : true));
       const list = rs.filter(f);
-      const tot = { desc: round2(cons.reduce((a, r) => a + this.devido(r), 0)), vou: round2(cons.reduce((a, r) => a + (r.voucherUsado || 0), 0)), pago: round2(cons.reduce((a, r) => a + (r.pago ? r.aDescontar || 0 : 0), 0)) };
-      G._eqCsv = [['Data', 'Nome', 'Tipo', 'Lançamento', 'Detalhe', 'Do voucher', 'A descontar', 'Pago', 'Custo', 'Lançado por'], ...list.map(r => [fmtDT(r.at), r.nome, r.tipo, r.kind === 'consumo' ? 'Consumo' : r.refeicao, r.kind === 'consumo' ? r.items.map(l => l.qty + 'x ' + l.name).join('; ') : r.prato + (r.extras ? ' + adicional pago: ' + this.extrasTxt(r) : '') + (r.obs ? ' (' + r.obs + ')' : ''), this.val(r) ? money(r.voucherUsado || 0) : '', this.val(r) ? money(this.devido(r)) : '', r.pago ? money(r.aDescontar) : '', r.kind === 'refeicao' ? money(r.custo || 0) : '', r.by || ''])];
-      html = `<div class="kpis"><div class="kpi"><span class="label">A descontar</span><span class="v">${brl(tot.desc)}</span><span class="d">${lbl}</span></div><div class="kpi"><span class="label">Pago com voucher</span><span class="v">${brl(tot.vou)}</span></div><div class="kpi"><span class="label">Já pago pelo funcionário</span><span class="v">${brl(tot.pago)}</span></div></div>
-        <div class="chips">${[['', 'Tudo'], ['descontar', 'A descontar'], ['voucher', 'Voucher'], ['pago', 'Pago']].map(([k, t]) => `<button data-sit="${k}" class="${sit === k ? 'on' : ''}">${t}</button>`).join('')}</div>
+      const tot = { adi: round2(cons.reduce((a, r) => a + (r.adiant ? this.devido(r) : 0), 0)), desc: round2(cons.reduce((a, r) => a + this.devido(r), 0)), vou: round2(cons.reduce((a, r) => a + (r.voucherUsado || 0), 0)), pago: round2(cons.reduce((a, r) => a + (r.pago ? r.aDescontar || 0 : 0), 0)) };
+      G._eqCsv = [['Data', 'Nome', 'Tipo', 'Lançamento', 'Detalhe', 'Do voucher', 'A descontar', 'Pago', 'Custo', 'Lançado por'], ...list.map(r => [fmtDT(r.at), r.nome, r.tipo, r.adiant ? 'Adiantamento' : r.kind === 'consumo' ? 'Consumo' : r.refeicao, r.kind === 'consumo' ? r.items.map(l => l.qty + 'x ' + l.name).join('; ') : r.prato + (r.extras ? ' + adicional pago: ' + this.extrasTxt(r) : '') + (r.obs ? ' (' + r.obs + ')' : ''), this.val(r) ? money(r.voucherUsado || 0) : '', this.val(r) ? money(this.devido(r)) : '', r.pago ? money(r.aDescontar) : '', r.kind === 'refeicao' ? money(r.custo || 0) : '', r.by || ''])];
+      html = `<div class="row" style="justify-content:flex-end;flex-wrap:wrap"><span class="muted small grow">Esqueceram de lançar no caixa? A gestora lança aqui, com a data certa.</span><button class="btn" id="gl-con">${ico('plus')} Consumo esquecido</button><button class="btn" id="gl-ref">${ico('plus')} Refeição esquecida</button><button class="btn primary" id="gl-adi">${ico('cash')} Adiantamento</button></div>
+        <div class="kpis"><div class="kpi"><span class="label">A descontar</span><span class="v">${brl(tot.desc)}</span><span class="d">${lbl}${tot.adi ? ` · inclui ${brl(tot.adi)} de adiantamento` : ''}</span></div><div class="kpi"><span class="label">Pago com voucher</span><span class="v">${brl(tot.vou)}</span></div><div class="kpi"><span class="label">Já pago pelo funcionário</span><span class="v">${brl(tot.pago)}</span></div></div>
+        <div class="chips">${[['', 'Tudo'], ['descontar', 'A descontar'], ['voucher', 'Voucher'], ['pago', 'Pago'], ['adiant', 'Adiantamentos']].map(([k, t]) => `<button data-sit="${k}" class="${sit === k ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="table-wrap"><table class="t"><thead><tr><th>Data</th><th>Nome</th><th>Lançamento</th><th>Detalhe</th><th>Situação</th><th class="r">Custo</th><th>Lançado por</th><th></th></tr></thead><tbody>
-        ${list.slice(0, 400).map(r => `<tr><td class="num">${fmtDT(r.at)}</td><td>${esc(r.nome)}</td><td>${r.kind === 'consumo' ? '<span class="pill warn">consumo</span>' : `<span class="pill ok">${esc(r.refeicao)}</span>`}</td><td class="small">${r.kind === 'consumo' ? r.items.map(l => `${l.qty}x ${esc(l.name)}`).join(', ') : esc(r.prato) + (r.extras ? ` · <b>+ ${esc(this.extrasTxt(r))}</b>` : '') + (r.viagem ? ' · levar' : '') + (r.obs ? ` · ${esc(r.obs)}` : '')}</td><td style="white-space:nowrap">${this.situacaoHtml(r)}</td><td class="r num">${r.kind === 'refeicao' ? brl(r.custo || 0) : '–'}</td><td>${r.by ? `<span class="pill info">${esc(r.by)}</span>` : '<span class="muted">–</span>'}</td><td style="white-space:nowrap">${this.val(r) ? `<button class="btn sm" data-lc="${r.id}">Corrigir</button> ` : ''}<button class="icon-btn" data-en="${r.id}" aria-label="Corrigir nome">${ico('edit')}</button><button class="icon-btn" data-del="${r.id}" aria-label="Excluir lançamento" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Nada neste filtro.</td></tr>'}</tbody></table></div>
+        ${list.slice(0, 400).map(r => `<tr><td class="num">${fmtDT(r.at)}</td><td>${esc(r.nome)}</td><td>${r.adiant ? '<span class="pill info">adiantamento</span>' : r.kind === 'consumo' ? '<span class="pill warn">consumo</span>' : `<span class="pill ok">${esc(r.refeicao)}</span>`}${r.esquecido ? ' <span class="pill" title="lançado depois pela gestora">pela gestora</span>' : ''}</td><td class="small">${r.kind === 'consumo' ? r.items.map(l => `${l.qty}x ${esc(l.name)}`).join(', ') : esc(r.prato) + (r.extras ? ` · <b>+ ${esc(this.extrasTxt(r))}</b>` : '') + (r.viagem ? ' · levar' : '') + (r.obs ? ` · ${esc(r.obs)}` : '')}</td><td style="white-space:nowrap">${this.situacaoHtml(r)}</td><td class="r num">${r.kind === 'refeicao' ? brl(r.custo || 0) : '–'}</td><td>${r.by ? `<span class="pill info">${esc(r.by)}</span>` : '<span class="muted">–</span>'}</td><td style="white-space:nowrap">${this.val(r) ? `<button class="btn sm" data-lc="${r.id}">Corrigir</button> ` : ''}<button class="icon-btn" data-en="${r.id}" aria-label="Corrigir nome">${ico('edit')}</button><button class="icon-btn" data-del="${r.id}" aria-label="Excluir lançamento" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Nada neste filtro.</td></tr>'}</tbody></table></div>
         <p class="muted small" style="margin:0">Use "Corrigir" para trocar entre voucher e desconto, marcar que o funcionário pagou ou excluir um lançamento feito errado.</p>`;
     } else if (G.eqTab === 'cad') {
       const ps = this.pessoas(), multi = Loja.multi();
@@ -3926,6 +4055,8 @@ const Equipe = {
           ${items.map(i => `<tr><td><input type="checkbox" data-dl="${i.id}" ${this.menuDia(0).lanches.includes(i.id) ? 'checked' : ''} aria-label="Liberar ${esc(i.name)}"></td><td>${esc(i.name)}</td><td class="r num muted">${brl(i.price)}</td><td class="r"><input class="input num" data-dc="${i.id}" style="width:110px;text-align:right" inputmode="decimal" value="${((sm[0] || {}).custoLanche || {})[i.id] ? money(sm[0].custoLanche[i.id]) : ''}" placeholder="0,00"></td></tr>`).join('')}
           </tbody></table></div></div>
         <div class="card row"><label class="field"><span>Desconto para funcionário no consumo (%)</span><input class="input num" id="eq-desc" style="width:110px" value="${s.staffDiscount || 0}"></label><span class="muted small grow" style="align-self:flex-end">0% = desconta o preço cheio do cardápio.</span></div>
+        <div class="card col"><h3>Entregadores</h3><p class="muted small" style="margin:0">Nas lojas marcadas, o entregador pode escolher um dos lanches de domingo em vez da comida, em qualquer dia. Os funcionários continuam só com o prato do dia.</p>
+          <div class="row">${Loja.list().map(l => `<label class="row" style="gap:8px"><span class="switch"><input type="checkbox" data-entl="${l.id}" ${(s.entregLanche || {})[l.id] ? 'checked' : ''}><i></i></span> ${esc(l.nome)}</label>`).join('')}</div></div>
         <button class="btn primary big" id="eq-save" style="align-self:flex-start">Salvar cardápio da equipe</button>`;
     }
     pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Consumo da equipe</h1><div class="sub">O que cada um pega para descontar e o custo com a alimentação da equipe.</div></div>${!noPeriod ? `<button class="btn" id="eq-csv">${ico('download')} Baixar planilha</button>` : ''}</div>${tabs}${!noPeriod ? G.periodChips() : ''}${filtroHtml}${html}`;
@@ -3943,13 +4074,16 @@ const Equipe = {
     $$('[data-del]', pg).forEach(x => x.onclick = async () => { const r = Store.get('equipe', x.dataset.del); if (await confirmBox(`Excluir este lançamento?${r && r.voucherUsado ? ` ${brl(r.voucherUsado)} volta para o voucher.` : ''}`, { ok: 'Excluir', danger: true })) { if (r) await this.devolverVoucher(r); await Store.del('equipe', x.dataset.del); G._memo = {}; G.render(); } });
     $$('[data-lc]', pg).forEach(x => x.onclick = () => this.corrigirLanc(x.dataset.lc, () => G.render()));
     $$('[data-sit]', pg).forEach(x => x.onclick = () => { G.eqSit = x.dataset.sit; G.render(); });
+    const re = () => { G._memo = {}; G.render(); };
+    if ($('#gl-con', pg)) { $('#gl-con', pg).onclick = () => this.consumoEsquecido(re); $('#gl-ref', pg).onclick = () => this.refeicaoEsquecida(re); $('#gl-adi', pg).onclick = () => this.adiantamento(re); }
     if (G.eqTab === 'cardapio') {
       $('#eq-save', pg).onclick = async () => {
         const sm = {};
         $$('[data-pd]', pg).forEach(i => { const d = i.dataset.pd; sm[d] = { proteina: i.value.trim(), custo: num($(`[data-cd="${d}"]`, pg).value) }; });
         const custoLanche = {}; $$('[data-dc]', pg).forEach(i => { if (i.value.trim()) custoLanche[i.dataset.dc] = num(i.value); });
         sm[0] = { lanches: $$('[data-dl]:checked', pg).map(i => i.dataset.dl), custoLanche };
-        await Store.update('settings', 'main', { staffMenu: sm, staffDiscount: num($('#eq-desc', pg).value), staffSides: $('#eq-sides', pg).value.trim() });
+        const entregLanche = {}; $$('[data-entl]', pg).forEach(x => { if (x.checked) entregLanche[x.dataset.entl] = true; });
+        await Store.update('settings', 'main', { staffMenu: sm, staffDiscount: num($('#eq-desc', pg).value), staffSides: $('#eq-sides', pg).value.trim(), entregLanche: Object.keys(entregLanche).length ? entregLanche : { _nenhuma: true } });
         toast('Cardápio da equipe salvo');
       };
     }
