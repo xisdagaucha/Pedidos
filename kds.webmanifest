@@ -1,0 +1,20 @@
+{
+ "name": "Cozinha Xis da Gaúcha",
+ "short_name": "Cozinha",
+ "start_url": "kds.html?loja=barreiros",
+ "display": "fullscreen",
+ "background_color": "#0c0e13",
+ "theme_color": "#0c0e13",
+ "icons": [
+  {
+   "src": "icon-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icon-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  }
+ ]
+}
