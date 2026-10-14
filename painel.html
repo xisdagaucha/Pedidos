@@ -560,7 +560,10 @@ function addManual(){
   var doc = { at: Date.now(), loja: lj, fonte: addSrc, numero: num, origin: 'painel', items: [{ lid: 'm' + Date.now(), name: nome, qty: 1, printer: 'POS', canceled: false }] };
   if(addSrc === 'salao') doc.comanda = num;
   $('addGo').disabled = true;
-  db.collection('painelPedidos').add(doc).then(function(){ $('addNum').value = ''; $('addNum').focus(); }).catch(function(e){ toast('Não consegui incluir: ' + e.message); }).then(function(){ $('addGo').disabled = false; });
+  var ok = function(){ $('addNum').value = ''; $('addNum').focus(); };
+  var viaOrders = function(){ return db.collection('orders').add(doc).then(function(){ lsSet('xg_manualCol','orders'); ok(); }); };
+  var go = lsGet('xg_manualCol','painelPedidos') === 'orders' ? viaOrders() : db.collection('painelPedidos').add(doc).then(ok).catch(function(){ return viaOrders(); });
+  go.catch(function(e){ toast('Não consegui incluir: ' + e.message); }).then(function(){ $('addGo').disabled = false; });
 }
 $('addGo').addEventListener('click', addManual);
 $('addNum').addEventListener('keydown', function(e){ if(e.key === 'Enter') addManual(); });
@@ -704,7 +707,7 @@ function startListeners(){
   }, function(e){ $('syncDot').classList.remove('on'); toast('Sem acesso aos pedidos: ' + e.message); });
   db.collection('painelPedidos').where('at','>=', since).onSnapshot(function(s){
     ordersManual = s.docs.map(function(d){ return Object.assign({ id:d.id, _col:'painelPedidos' }, d.data()); }); setOrders(); renderGrid();
-  }, function(e){ toast('Sem acesso para pedidos incluídos à mão: ' + e.message); });
+  }, function(e){ lsSet('xg_manualCol','orders'); });
   db.collection('categories').onSnapshot(function(s){ categories = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); renderCats(); }, function(){});
   db.collection('settings').doc('main').onSnapshot(function(d){ var l = d.exists && d.data().lojas; if(l && l.length){ window._lojasFull = l; lojas = l.map(function(x){ return { id:x.id, nome:x.nome }; }); renderLojaPick(); renderCats(); } }, function(){});
   db.collection('settings').doc('painel').onSnapshot(function(d){
