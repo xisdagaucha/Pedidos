@@ -56,7 +56,7 @@ var $ = function(id){ return document.getElementById(id); };
 var cfg = { amberMin: 8, redMin: 14, hideMin: 180, kitchenPrinters: ['POS'] };
 var skewBy = {}; try{ skewBy = JSON.parse(localStorage.getItem('xg_skew') || '{}') || {}; }catch(e){}
 function effAt(o){ var t = o.at + (skewBy[o.deviceId || o.origin || 'x'] || 0); return t > Date.now() ? Date.now() : t; }
-var orders = [], nomeLoja = '';
+var orders = [], ordersMain = [], ordersManual = [], nomeLoja = '';
 var loja = 'barreiros';
 try{ loja = new URLSearchParams(location.search).get('loja') || 'barreiros'; }catch(e){}
 function esc(s){ var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
@@ -73,7 +73,7 @@ function render(){
   $('grid').innerHTML = list.map(function(o){
     var ms = now - effAt(o), b = band(ms), col = b === 'g' ? 'var(--g)' : b === 'y' ? 'var(--y)' : 'var(--r)', tc = b === 'y' ? '#1a1400' : '#fff';
     var ed = (o.items||[]).reduce(function(m,i){ return Math.max(m, i.editedAt||0); }, 0), edTag = ed && now - ed < 10*60000 ? '<span class="tag ed">EDITADO</span>' : '';
-    return '<div class="t" style="--c:' + col + ';--tc:' + tc + '"><div class="t-big">' + (o.comanda ? '<small>COMANDA</small>' + esc(o.comanda) : '<small>PEDIDO</small>') + '</div>' + (o.mesa ? '<div class="t-mesa">Mesa ' + esc(o.mesa) + '</div>' : '') + '<div class="t-time">' + fmt(ms) + '</div>' + edTag + '</div>';
+    return '<div class="t" style="--c:' + col + ';--tc:' + tc + '"><div class="t-big">' + (o.fonte === 'ifood' ? '<small>IFOOD</small>' + esc(o.numero) : o.fonte === 'anotaai' ? '<small>ANOTA AÍ</small>' + esc(o.numero) : (o.comanda || o.numero) ? '<small>COMANDA</small>' + esc(o.comanda || o.numero) : '<small>PEDIDO</small>') + '</div>' + (o.mesa ? '<div class="t-mesa">Mesa ' + esc(o.mesa) + '</div>' : '') + '<div class="t-time">' + fmt(ms) + '</div>' + edTag + '</div>';
   }).join('');
   var d = new Date(); $('clock').textContent = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
 }
@@ -96,9 +96,12 @@ function err(m){ var e = $('err'); e.textContent = m; e.style.display = m ? 'blo
         skewBy[k] = Math.abs(diff) > 20000 ? diff - 1000 : 0; try{ localStorage.setItem('xg_skew', JSON.stringify(skewBy)); }catch(e){}
       }); }
       first = false;
-      orders = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); });
+      ordersMain = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); orders = ordersMain.concat(ordersManual);
       $('dot').classList.add('on'); err(''); render();
     }, function(e){ $('dot').classList.remove('on'); err('Sem acesso aos pedidos: ' + e.message); });
+    db.collection('painelPedidos').where('at','>=', Date.now() - 36*3600*1000).onSnapshot(function(s){
+      ordersManual = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); orders = ordersMain.concat(ordersManual); render();
+    }, function(){});
     db.collection('settings').doc('painel').onSnapshot(function(d){
       if(!d.exists) return; var s = d.data();
       if(s.amberMin>0) cfg.amberMin = s.amberMin; if(s.redMin>0) cfg.redMin = s.redMin; if(s.hideMin>=30) cfg.hideMin = s.hideMin;

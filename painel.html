@@ -272,6 +272,15 @@ select{ width:100%; padding:12px 13px; font-size:16px; border:1px solid var(--bo
 .toast.show{ display:flex; }
 .toast button{ background:none; border:none; color:#4fd39a; font-weight:800; font-size:14px; cursor:pointer; }
 .sq-mesa{ font-size:11px; opacity:.8; }
+.add-bar{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; background:var(--bg-panel); border-radius:14px; padding:10px 12px; margin-bottom:12px; }
+.src-btn{ padding:10px 14px; font-size:14px; font-weight:800; border-radius:10px; border:2px solid var(--border-strong); background:var(--bg-card); color:var(--text-secondary); cursor:pointer; }
+.src-btn.on[data-src=salao]{ background:var(--c-green); border-color:var(--c-green); color:#fff; }
+.src-btn.on[data-src=ifood]{ background:#ea1d2c; border-color:#ea1d2c; color:#fff; }
+.src-btn.on[data-src=anotaai]{ background:#2563a8; border-color:#2563a8; color:#fff; }
+.add-bar input{ width:140px; flex:0 0 auto; padding:10px 12px; font-weight:800; font-size:18px; text-align:center; }
+.add-bar .add-go{ padding:11px 20px; font-size:15px; font-weight:800; border:none; border-radius:10px; background:var(--brand); color:#fff; cursor:pointer; }
+.src-tag{ display:inline-block; font-size:10px; font-weight:800; padding:1px 6px; border-radius:8px; margin-left:4px; color:#fff; vertical-align:middle; }
+.src-tag.ifood{ background:#ea1d2c; } .src-tag.anotaai{ background:#2563a8; }
 .sq-tag{ display:inline-block; background:#f2b705; color:#1a1400; font-size:10px; font-weight:800; padding:1px 6px; border-radius:8px; margin-left:4px; }
 .modal-bg{ position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:40; display:none; align-items:flex-end; justify-content:center; }
 .modal-bg.open{ display:flex; }
@@ -303,6 +312,13 @@ select{ width:100%; padding:12px 13px; font-size:16px; border:1px solid var(--bo
 </div>
 
 <div class="tab-panel active" id="tabPainel">
+  <div class="add-bar">
+    <button class="src-btn" data-src="salao">Salão</button>
+    <button class="src-btn" data-src="ifood">iFood</button>
+    <button class="src-btn" data-src="anotaai">Anota AÍ</button>
+    <input type="text" id="addNum" inputmode="numeric" autocomplete="off" placeholder="Nº">
+    <button class="add-go" id="addGo">+ Incluir</button>
+  </div>
   <div class="board" id="board">
     <div class="col green"><div class="col-head"><div class="col-count" id="cntGreen">0</div><div class="col-label">Tempo normal</div></div><div class="col-list" id="colGreen"></div></div>
     <div class="col yellow"><div class="col-head"><div class="col-count" id="cntYellow">0</div><div class="col-label">Começou a atrasar</div></div><div class="col-list" id="colYellow"></div></div>
@@ -388,7 +404,7 @@ select{ width:100%; padding:12px 13px; font-size:16px; border:1px solid var(--bo
 var $ = function(id){ return document.getElementById(id); };
 var settings = { amberMin: 8, redMin: 14, hideMin: 180, kitchenPrinters: ['POS'] };
 var skewBy = {}; try{ skewBy = JSON.parse(lsGet('xg_skew','{}')) || {}; }catch(e){}
-var orders = [], categories = [], lojas = [{id:'barreiros', nome:'Barreiros · São José'},{id:'palhoca', nome:'Palhoça · Centro'}];
+var orders = [], ordersMain = [], ordersManual = [], categories = [], lojas = [{id:'barreiros', nome:'Barreiros · São José'},{id:'palhoca', nome:'Palhoça · Centro'}];
 var db = null, auth = null, loja = lsGet('xg_loja', 'barreiros'), lojaLocked = false;
 try{ var qp = new URLSearchParams(location.search).get('loja'); if(qp){ loja = qp; lojaLocked = true; lsSet('xg_loja', qp); } }catch(e){}
 var lastUndo = null, toastTimer = null, atrEntries = [], atrRaw = [];
@@ -422,6 +438,11 @@ function countedItems(o){
 }
 /* relógio do aparelho que lançou o pedido pode estar adiantado/atrasado: corrige pelo horário em que o pedido chegou aqui */
 function devKey(o){ return o.deviceId || o.origin || 'x'; }
+function lbl(o){ var n = o.numero || o.comanda;
+  if(o.fonte === 'ifood') return 'iFood #' + esc(n); if(o.fonte === 'anotaai') return 'Anota AÍ #' + esc(n);
+  return n ? 'Comanda ' + esc(n) : 'Pedido'; }
+function docRef(o){ return db.collection(o._col || 'orders').doc(o.id); }
+function setOrders(){ orders = ordersMain.concat(ordersManual); }
 function effAt(o){ var t = o.at + (skewBy[devKey(o)] || 0); return t > Date.now() ? Date.now() : t; }
 
 /* ---------- painel ---------- */
@@ -436,7 +457,7 @@ function renderGrid(){
   Object.keys(cols).forEach(function(k){ cols[k].innerHTML = ''; });
   activeOrders().forEach(function(o){
     var ms = Date.now() - effAt(o), band = bandFor(ms), its = countedItems(o);
-    var titulo = o.comanda ? 'Comanda ' + esc(o.comanda) : 'Pedido';
+    var titulo = lbl(o);
     var mesa = o.mesa ? '<div class="sq-mesa">Mesa ' + esc(o.mesa) + (loja === '*' ? ' · ' + esc(lojaOf(o)) : '') + '</div>' : '';
     var itens = its.map(function(i){ return esc(i.qty + 'x ' + i.name); }).join(', ');
     var sq = document.createElement('div');
@@ -461,14 +482,14 @@ function renderDone(){
   var box = $('doneList'); if(box.contains(document.activeElement) && document.activeElement.tagName === 'BUTTON') return;
   box.innerHTML = done.length ? done.slice(0,30).map(function(o){
     var ms = o.dispatchedAt - effAt(o), b = o.dispatchedBand || bandFor(ms);
-    return '<div class="done-row"><span><b>' + (o.comanda ? 'Comanda ' + esc(o.comanda) : 'Pedido') + '</b>' + (o.mesa ? ' · mesa ' + esc(o.mesa) : '') + ' · ' + fmtTime(o.at) + '</span><span class="atr-tag ' + (b === 'green' ? '' : b) + '">' + fmtElapsed(ms) + '</span><button class="small-action-btn" data-reopen="' + o.id + '">Reabrir</button></div>';
+    return '<div class="done-row"><span><b>' + lbl(o) + '</b>' + (o.mesa ? ' · mesa ' + esc(o.mesa) : '') + ' · ' + fmtTime(o.at) + '</span><span class="atr-tag ' + (b === 'green' ? '' : b) + '">' + fmtElapsed(ms) + '</span><button class="small-action-btn" data-reopen="' + o.id + '">Reabrir</button></div>';
   }).join('') : '<div class="chart-empty">Nenhum pedido finalizado hoje ainda.</div>';
   box.querySelectorAll('[data-reopen]').forEach(function(b){ b.addEventListener('click', function(){ reopen(b.getAttribute('data-reopen')); }); });
 }
 function reopen(id){
   var o = orders.find(function(x){ return x.id === id; }); if(!o) return;
   var FV = firebase.firestore.FieldValue; o.dispatchedAt = null; renderGrid();
-  db.collection('orders').doc(id).update({ dispatchedAt: FV.delete(), dispatchedBand: FV.delete(), dispatchedElapsedMs: FV.delete() }).then(function(){ toast('Pedido reaberto'); }).catch(function(e){ toast('Erro: ' + e.message); });
+  docRef(o).update({ dispatchedAt: FV.delete(), dispatchedBand: FV.delete(), dispatchedElapsedMs: FV.delete() }).then(function(){ toast('Pedido reaberto'); }).catch(function(e){ toast('Erro: ' + e.message); });
 }
 /* ---------- editar pedido ---------- */
 var editing = null;
@@ -481,7 +502,7 @@ function openEdit(id){
 }
 function renderEdit(o){
   var m = $('editModal');
-  m.innerHTML = '<h3>Editar ' + (o.comanda ? 'comanda ' + esc(o.comanda) : 'pedido') + (o.mesa ? ' · mesa ' + esc(o.mesa) : '') + '</h3><div class="note" style="margin:0 0 12px;">Entrou às ' + fmtTime(o.at) + '. A cozinha vê a alteração na hora e o pedido ganha a marca EDITADO por 10 minutos.</div>' +
+  m.innerHTML = '<h3>Editar ' + lbl(o) + (o.mesa ? ' · mesa ' + esc(o.mesa) : '') + '</h3><div class="note" style="margin:0 0 12px;">Entrou às ' + fmtTime(o.at) + '. A cozinha vê a alteração na hora e o pedido ganha a marca EDITADO por 10 minutos.</div>' +
     editing.items.map(function(i, k){
       var opts = (i.opts||[]).map(optLine).join(' · ');
       return '<div class="edit-item' + (i.canceled ? ' gone' : '') + '"><div class="edit-item-top"><div><div class="edit-item-name">' + esc(i.name) + (i.canceled ? ' (cancelado)' : '') + '</div>' + (opts ? '<div class="edit-item-opts">' + esc(opts) + '</div>' : '') + '</div>' +
@@ -506,7 +527,7 @@ function saveEdit(){
   var id = editing.id, items = editing.items;
   if(!items.some(function(i){ return !i.canceled; }) && !confirm('Todos os itens foram cancelados. O pedido vai sair do painel. Continuar?')) return;
   var o = orders.find(function(x){ return x.id === id; });
-  db.collection('orders').doc(id).update({ items: items, editedAt: Date.now() })
+  docRef(o).update({ items: items, editedAt: Date.now() })
     .then(function(){ if(o) o.items = items; closeEdit(); renderGrid(); toast('Pedido atualizado'); })
     .catch(function(e){ toast('Não consegui salvar: ' + e.message); });
 }
@@ -515,22 +536,42 @@ function dispatch(id){
   var o = orders.find(function(x){ return x.id === id; }); if(!o) return;
   var now = Date.now(), band = bandFor(now - effAt(o));
   o.dispatchedAt = now; o.dispatchedBand = band; renderGrid();
-  db.collection('orders').doc(id).update({ dispatchedAt: now, dispatchedBand: band, dispatchedElapsedMs: now - effAt(o) })
+  docRef(o).update({ dispatchedAt: now, dispatchedBand: band, dispatchedElapsedMs: now - effAt(o) })
     .then(function(){
       toast('Pedido finalizado', function(){
         o.dispatchedAt = null; renderGrid();
-        db.collection('orders').doc(id).update({ dispatchedAt: firebase.firestore.FieldValue.delete(), dispatchedBand: firebase.firestore.FieldValue.delete(), dispatchedElapsedMs: firebase.firestore.FieldValue.delete() }).catch(function(){});
+        docRef(o).update({ dispatchedAt: firebase.firestore.FieldValue.delete(), dispatchedBand: firebase.firestore.FieldValue.delete(), dispatchedElapsedMs: firebase.firestore.FieldValue.delete() }).catch(function(){});
       });
     })
     .catch(function(e){ o.dispatchedAt = null; renderGrid(); toast('Não consegui finalizar: ' + e.message); });
 }
 
+/* ---------- incluir pedido (salão / iFood / Anota AÍ) ---------- */
+var addSrc = lsGet('xg_src','ifood');
+function paintSrc(){ document.querySelectorAll('.src-btn').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-src') === addSrc); }); }
+document.querySelectorAll('.src-btn').forEach(function(b){ b.addEventListener('click', function(){ addSrc = b.getAttribute('data-src'); lsSet('xg_src', addSrc); paintSrc(); $('addNum').focus(); }); });
+paintSrc();
+function addManual(){
+  var num = $('addNum').value.trim();
+  if(!num){ toast('Digite o número do pedido.'); $('addNum').focus(); return; }
+  var dup = activeOrders().some(function(o){ return o.fonte === addSrc && String(o.numero || o.comanda) === num; });
+  if(dup && !confirm('Já existe o ' + (addSrc === 'ifood' ? 'iFood' : addSrc === 'anotaai' ? 'Anota AÍ' : 'salão') + ' ' + num + ' no painel. Incluir de novo?')) return;
+  var lj = loja === '*' ? lojas[0].id : loja, nome = addSrc === 'ifood' ? 'Pedido iFood' : addSrc === 'anotaai' ? 'Pedido Anota AÍ' : 'Pedido salão';
+  var doc = { at: Date.now(), loja: lj, fonte: addSrc, numero: num, origin: 'painel', items: [{ lid: 'm' + Date.now(), name: nome, qty: 1, printer: 'POS', canceled: false }] };
+  if(addSrc === 'salao') doc.comanda = num;
+  $('addGo').disabled = true;
+  db.collection('painelPedidos').add(doc).then(function(){ $('addNum').value = ''; $('addNum').focus(); }).catch(function(e){ toast('Não consegui incluir: ' + e.message); }).then(function(){ $('addGo').disabled = false; });
+}
+$('addGo').addEventListener('click', addManual);
+$('addNum').addEventListener('keydown', function(e){ if(e.key === 'Enter') addManual(); });
+
 /* ---------- atrasos ---------- */
 function atrLoad(){
   var sv = $('atrStart').value, ev = $('atrEnd').value; if(!sv || !ev) return;
   var s = new Date(sv).getTime(), e = new Date(ev).getTime();
-  db.collection('orders').where('at','>=', s).where('at','<=', e).get()
-    .then(function(snap){ atrRaw = snap.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); renderAtrasos(); })
+  var q = function(col){ return db.collection(col).where('at','>=', s).where('at','<=', e).get().then(function(snap){ return snap.docs.map(function(d){ return Object.assign({ id:d.id, _col:col }, d.data()); }); }); };
+  Promise.all([q('orders'), q('painelPedidos').catch(function(){ return []; })])
+    .then(function(r){ atrRaw = r[0].concat(r[1]); renderAtrasos(); })
     .catch(function(err){ atrRaw = []; renderAtrasos(); toast('Erro ao carregar: ' + err.message); });
 }
 function renderAtrasos(){
@@ -562,7 +603,7 @@ function renderAtrasos(){
   if(!lateItems.length){ list.innerHTML = '<div class="chart-empty">Nenhum pedido atrasou no período 🎉</div>'; return; }
   list.innerHTML = lateItems.slice(0,200).map(function(i){
     var d = new Date(i.o.at), hh = d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}) + ' ' + fmtTime(i.o.at);
-    var nome = i.o.comanda ? 'Comanda ' + esc(i.o.comanda) : 'Pedido';
+    var nome = lbl(i.o);
     return '<div class="atr-late-row"><span><b>' + nome + '</b>' + (i.o.mesa ? ' · mesa ' + esc(i.o.mesa) : '') + ' · ' + hh + (i.live ? ' · em andamento' : '') + '</span><span class="atr-tag ' + i.band + '">' + (i.ms/60000).toFixed(1).replace('.',',') + ' min · ' + (i.band === 'red' ? 'Atrasado' : 'Começou a atrasar') + '</span></div>';
   }).join('');
 }
@@ -658,9 +699,12 @@ function startListeners(){
       });
     }
     firstOrders = false;
-    orders = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); });
+    ordersMain = s.docs.map(function(d){ return Object.assign({ id:d.id, _col:'orders' }, d.data()); }); setOrders();
     $('syncDot').classList.add('on'); renderGrid();
   }, function(e){ $('syncDot').classList.remove('on'); toast('Sem acesso aos pedidos: ' + e.message); });
+  db.collection('painelPedidos').where('at','>=', since).onSnapshot(function(s){
+    ordersManual = s.docs.map(function(d){ return Object.assign({ id:d.id, _col:'painelPedidos' }, d.data()); }); setOrders(); renderGrid();
+  }, function(e){ toast('Sem acesso para pedidos incluídos à mão: ' + e.message); });
   db.collection('categories').onSnapshot(function(s){ categories = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); renderCats(); }, function(){});
   db.collection('settings').doc('main').onSnapshot(function(d){ var l = d.exists && d.data().lojas; if(l && l.length){ window._lojasFull = l; lojas = l.map(function(x){ return { id:x.id, nome:x.nome }; }); renderLojaPick(); renderCats(); } }, function(){});
   db.collection('settings').doc('painel').onSnapshot(function(d){
