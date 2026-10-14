@@ -19,7 +19,13 @@ html,body{ margin:0; height:100%; background:#0c0e13; color:#fff; font-family:-a
 .dot{ width:10px; height:10px; border-radius:50%; background:#6b7280; display:inline-block; margin-right:8px; }
 .dot.on{ background:var(--g); }
 .wrap{ height:calc(100% - 52px); overflow:hidden; padding:14px; }
-.grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(var(--w,260px),1fr)); gap:12px; align-content:start; }
+.grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(var(--w,260px),1fr)); gap:14px; align-content:start; }
+.t{ text-align:center; padding:14px 10px 16px; background:var(--c) !important; color:var(--tc,#fff); border:none !important; }
+.t-big{ font-size:clamp(44px,6vw,96px); font-weight:800; line-height:1; }
+.t-big small{ display:block; font-size:.28em; letter-spacing:.12em; opacity:.85; margin-bottom:4px; }
+.t .tag{ display:block; width:max-content; margin:10px auto 0; font-size:clamp(14px,1.6vw,24px); padding:3px 14px; }
+.t-mesa{ font-size:clamp(20px,2.4vw,38px); font-weight:800; opacity:.9; margin-top:4px; }
+.t-time{ font-size:clamp(40px,5.4vw,84px); font-weight:800; font-variant-numeric:tabular-nums; line-height:1.05; margin-top:10px; background:rgba(0,0,0,.28); border-radius:12px; padding:6px 0; color:#fff; }
 .t{ background:#171a21; border-radius:16px; overflow:hidden; border:3px solid var(--c); display:flex; flex-direction:column; }
 .t-head{ background:var(--c); color:var(--tc,#fff); padding:8px 14px; display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
 .t-time{ font-size:clamp(34px,4.2vw,64px); font-weight:800; font-variant-numeric:tabular-nums; line-height:1.05; }
@@ -47,7 +53,9 @@ html,body{ margin:0; height:100%; background:#0c0e13; color:#fff; font-family:-a
 <script src="config.js"></script>
 <script>
 var $ = function(id){ return document.getElementById(id); };
-var cfg = { amberMin: 8, redMin: 14, hideMin: 180, ignoredCats: [] };
+var cfg = { amberMin: 8, redMin: 14, hideMin: 180, kitchenPrinters: ['POS'] };
+var skewBy = {}; try{ skewBy = JSON.parse(localStorage.getItem('xg_skew') || '{}') || {}; }catch(e){}
+function effAt(o){ var t = o.at + (skewBy[o.deviceId || o.origin || 'x'] || 0); return t > Date.now() ? Date.now() : t; }
 var orders = [], nomeLoja = '';
 var loja = 'barreiros';
 try{ loja = new URLSearchParams(location.search).get('loja') || 'barreiros'; }catch(e){}
@@ -55,21 +63,17 @@ function esc(s){ var d = document.createElement('div'); d.textContent = s == nul
 function fmt(ms){ var s = Math.max(0, Math.floor(ms/1000)); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
 function band(ms){ var m = ms/60000; return m < cfg.amberMin ? 'g' : (m < cfg.redMin ? 'y' : 'r'); }
 function optLine(o){ if(typeof o === 'string') return o; if(o.kind === 'remove') return 'SEM ' + o.name; return (o.kind === 'choice' ? '' : '+ ') + ((o.qty||1) > 1 ? o.qty + 'x ' : '') + o.name; }
-function items(o){ return (o.items||[]).filter(function(i){ return !i.canceled && cfg.ignoredCats.indexOf(i.catId) < 0; }); }
+function items(o){ return (o.items||[]).filter(function(i){ return !i.canceled && cfg.kitchenPrinters.indexOf(i.printer || 'POS') >= 0; }); }
 function render(){
   var now = Date.now(), lim = now - cfg.hideMin*60000;
-  var list = orders.filter(function(o){ return !o.dispatchedAt && o.at >= lim && (o.loja || 'barreiros') === loja && items(o).length; }).sort(function(a,b){ return a.at - b.at; });
+  var list = orders.filter(function(o){ return !o.dispatchedAt && effAt(o) >= lim && (o.loja || 'barreiros') === loja && items(o).length; }).sort(function(a,b){ return effAt(a) - effAt(b); });
   $('count').textContent = list.length + (list.length === 1 ? ' pedido' : ' pedidos');
   $('empty').style.display = list.length ? 'none' : 'block';
-  var n = list.length; document.documentElement.style.setProperty('--w', (n > 12 ? 200 : n > 6 ? 230 : 280) + 'px');
+  var n = list.length; document.documentElement.style.setProperty('--w', (n > 12 ? 190 : n > 6 ? 230 : 280) + 'px');
   $('grid').innerHTML = list.map(function(o){
-    var ms = now - o.at, b = band(ms), col = b === 'g' ? 'var(--g)' : b === 'y' ? 'var(--y)' : 'var(--r)', tc = b === 'y' ? '#1a1400' : '#fff';
+    var ms = now - effAt(o), b = band(ms), col = b === 'g' ? 'var(--g)' : b === 'y' ? 'var(--y)' : 'var(--r)', tc = b === 'y' ? '#1a1400' : '#fff';
     var ed = (o.items||[]).reduce(function(m,i){ return Math.max(m, i.editedAt||0); }, 0), edTag = ed && now - ed < 10*60000 ? '<span class="tag ed">EDITADO</span>' : '';
-    var body = items(o).map(function(i){
-      var opts = (i.opts||[]).map(optLine).join(' · ');
-      return '<div class="it"><div class="it-main"><b>' + esc(i.qty) + 'x</b> ' + esc(i.name) + (i.viagem ? '<span class="tag">VIAGEM</span>' : '') + '</div>' + (opts ? '<div class="it-sub">' + esc(opts) + '</div>' : '') + (i.obs ? '<div class="it-obs">OBS: ' + esc(i.obs) + '</div>' : '') + '</div>';
-    }).join('');
-    return '<div class="t" style="--c:' + col + ';--tc:' + tc + '"><div class="t-head"><div class="t-time">' + fmt(ms) + '</div><div class="t-who">' + (o.comanda ? 'Comanda ' + esc(o.comanda) : 'Pedido') + (o.mesa ? '<small>Mesa ' + esc(o.mesa) + '</small>' : '') + edTag + '</div></div><div class="t-body">' + body + '</div></div>';
+    return '<div class="t" style="--c:' + col + ';--tc:' + tc + '"><div class="t-big">' + (o.comanda ? '<small>COMANDA</small>' + esc(o.comanda) : '<small>PEDIDO</small>') + '</div>' + (o.mesa ? '<div class="t-mesa">Mesa ' + esc(o.mesa) + '</div>' : '') + '<div class="t-time">' + fmt(ms) + '</div>' + edTag + '</div>';
   }).join('');
   var d = new Date(); $('clock').textContent = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
 }
@@ -84,14 +88,21 @@ function err(m){ var e = $('err'); e.textContent = m; e.style.display = m ? 'blo
   auth.onAuthStateChanged(function(u){
     if(!u){ auth.signInAnonymously().catch(function(e){ err('Login falhou: ' + e.message); }); return; }
     if(started) return; started = true;
+    var first = true;
     db.collection('orders').where('at','>=', Date.now() - 36*3600*1000).onSnapshot(function(s){
+      if(!first){ s.docChanges().forEach(function(ch){
+        if(ch.type !== 'added' || ch.doc.metadata.hasPendingWrites || ch.doc.metadata.fromCache) return;
+        var d = ch.doc.data(), k = d.deviceId || d.origin || 'x', diff = Date.now() - d.at;
+        skewBy[k] = Math.abs(diff) > 20000 ? diff - 1000 : 0; try{ localStorage.setItem('xg_skew', JSON.stringify(skewBy)); }catch(e){}
+      }); }
+      first = false;
       orders = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); });
       $('dot').classList.add('on'); err(''); render();
     }, function(e){ $('dot').classList.remove('on'); err('Sem acesso aos pedidos: ' + e.message); });
     db.collection('settings').doc('painel').onSnapshot(function(d){
       if(!d.exists) return; var s = d.data();
       if(s.amberMin>0) cfg.amberMin = s.amberMin; if(s.redMin>0) cfg.redMin = s.redMin; if(s.hideMin>=30) cfg.hideMin = s.hideMin;
-      if(Array.isArray(s.ignoredCats)) cfg.ignoredCats = s.ignoredCats; render();
+      if(Array.isArray(s.kitchenPrinters) && s.kitchenPrinters.length) cfg.kitchenPrinters = s.kitchenPrinters; render();
     }, function(){});
   });
 })();

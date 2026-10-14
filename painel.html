@@ -367,7 +367,7 @@ select{ width:100%; padding:12px 13px; font-size:16px; border:1px solid var(--bo
   </div>
   <div class="card">
     <h3>O que aparece no painel</h3>
-    <div class="hint" style="margin-bottom:8px;">Desmarque as categorias que não passam pela cozinha (ex.: bebidas).</div>
+    <div class="hint" style="margin-bottom:8px;">Só entram no painel (e na tela da cozinha) os itens que saem pelas impressoras marcadas. Desmarque a do caixa para as bebidas não contarem tempo.</div>
     <div id="catList"></div>
   </div>
   <div class="card">
@@ -386,7 +386,8 @@ select{ width:100%; padding:12px 13px; font-size:16px; border:1px solid var(--bo
 <script src="config.js"></script>
 <script>
 var $ = function(id){ return document.getElementById(id); };
-var settings = { amberMin: 8, redMin: 14, hideMin: 180, ignoredCats: [] };
+var settings = { amberMin: 8, redMin: 14, hideMin: 180, kitchenPrinters: ['POS'] };
+var skewBy = {}; try{ skewBy = JSON.parse(lsGet('xg_skew','{}')) || {}; }catch(e){}
 var orders = [], categories = [], lojas = [{id:'barreiros', nome:'Barreiros · São José'},{id:'palhoca', nome:'Palhoça · Centro'}];
 var db = null, auth = null, loja = lsGet('xg_loja', 'barreiros'), lojaLocked = false;
 try{ var qp = new URLSearchParams(location.search).get('loja'); if(qp){ loja = qp; lojaLocked = true; lsSet('xg_loja', qp); } }catch(e){}
@@ -417,21 +418,24 @@ $('toastUndo').addEventListener('click', function(){ if(lastUndo) lastUndo(); $(
 
 /* ---------- itens que contam ---------- */
 function countedItems(o){
-  return (o.items || []).filter(function(i){ return !i.canceled && settings.ignoredCats.indexOf(i.catId) < 0; });
+  return (o.items || []).filter(function(i){ return !i.canceled && settings.kitchenPrinters.indexOf(i.printer || 'POS') >= 0; });
 }
+/* relógio do aparelho que lançou o pedido pode estar adiantado/atrasado: corrige pelo horário em que o pedido chegou aqui */
+function devKey(o){ return o.deviceId || o.origin || 'x'; }
+function effAt(o){ var t = o.at + (skewBy[devKey(o)] || 0); return t > Date.now() ? Date.now() : t; }
 
 /* ---------- painel ---------- */
 function activeOrders(){
   var limit = Date.now() - settings.hideMin*60000;
   return orders.filter(function(o){
-    return !o.dispatchedAt && o.at >= limit && (loja === '*' || lojaOf(o) === loja) && countedItems(o).length > 0;
+    return !o.dispatchedAt && effAt(o) >= limit && (loja === '*' || lojaOf(o) === loja) && countedItems(o).length > 0;
   }).sort(function(a,b){ return a.at - b.at; });
 }
 function renderGrid(){
   var cols = { green:$('colGreen'), yellow:$('colYellow'), red:$('colRed') }, counts = { green:0, yellow:0, red:0 };
   Object.keys(cols).forEach(function(k){ cols[k].innerHTML = ''; });
   activeOrders().forEach(function(o){
-    var ms = Date.now() - o.at, band = bandFor(ms), its = countedItems(o);
+    var ms = Date.now() - effAt(o), band = bandFor(ms), its = countedItems(o);
     var titulo = o.comanda ? 'Comanda ' + esc(o.comanda) : 'Pedido';
     var mesa = o.mesa ? '<div class="sq-mesa">Mesa ' + esc(o.mesa) + (loja === '*' ? ' · ' + esc(lojaOf(o)) : '') + '</div>' : '';
     var itens = its.map(function(i){ return esc(i.qty + 'x ' + i.name); }).join(', ');
@@ -439,7 +443,7 @@ function renderGrid(){
     sq.className = 'square b-' + band;
     sq.innerHTML =
       '<div class="sq-top"><div><div class="sq-number">' + titulo + editedTag(o) + '</div>' + mesa + '<div class="sq-items" title="' + itens + '">' + itens + '</div></div><button class="sq-edit-btn" data-edit="' + o.id + '">&#9998;</button></div>' +
-      '<div><div class="sq-elapsed">' + fmtElapsed(ms) + '</div><div class="sq-time-entered" style="text-align:center;">tempo total · entrou às ' + fmtTime(o.at) + '</div></div>' +
+      '<div><div class="sq-elapsed">' + fmtElapsed(ms) + '</div><div class="sq-time-entered" style="text-align:center;">tempo total · entrou às ' + fmtTime(effAt(o)) + '</div></div>' +
       '<button class="sq-dispatch-btn" data-id="' + o.id + '"><span class="lbl-short">✓ Finalizar</span><span class="lbl-long">Finalizar</span></button>';
     cols[band].appendChild(sq); counts[band]++;
   });
@@ -456,7 +460,7 @@ function renderDone(){
   $('doneCount').textContent = done.length ? done.length + ' pedido(s)' : '';
   var box = $('doneList'); if(box.contains(document.activeElement) && document.activeElement.tagName === 'BUTTON') return;
   box.innerHTML = done.length ? done.slice(0,30).map(function(o){
-    var ms = o.dispatchedAt - o.at, b = o.dispatchedBand || bandFor(ms);
+    var ms = o.dispatchedAt - effAt(o), b = o.dispatchedBand || bandFor(ms);
     return '<div class="done-row"><span><b>' + (o.comanda ? 'Comanda ' + esc(o.comanda) : 'Pedido') + '</b>' + (o.mesa ? ' · mesa ' + esc(o.mesa) : '') + ' · ' + fmtTime(o.at) + '</span><span class="atr-tag ' + (b === 'green' ? '' : b) + '">' + fmtElapsed(ms) + '</span><button class="small-action-btn" data-reopen="' + o.id + '">Reabrir</button></div>';
   }).join('') : '<div class="chart-empty">Nenhum pedido finalizado hoje ainda.</div>';
   box.querySelectorAll('[data-reopen]').forEach(function(b){ b.addEventListener('click', function(){ reopen(b.getAttribute('data-reopen')); }); });
@@ -509,9 +513,9 @@ function saveEdit(){
 $('editBg').addEventListener('click', function(e){ if(e.target === this) closeEdit(); });
 function dispatch(id){
   var o = orders.find(function(x){ return x.id === id; }); if(!o) return;
-  var now = Date.now(), band = bandFor(now - o.at);
+  var now = Date.now(), band = bandFor(now - effAt(o));
   o.dispatchedAt = now; o.dispatchedBand = band; renderGrid();
-  db.collection('orders').doc(id).update({ dispatchedAt: now, dispatchedBand: band, dispatchedElapsedMs: now - o.at })
+  db.collection('orders').doc(id).update({ dispatchedAt: now, dispatchedBand: band, dispatchedElapsedMs: now - effAt(o) })
     .then(function(){
       toast('Pedido finalizado', function(){
         o.dispatchedAt = null; renderGrid();
@@ -531,12 +535,12 @@ function atrLoad(){
 }
 function renderAtrasos(){
   var now = Date.now(), nowY = 0, nowR = 0, noDisp = 0, items = [];
-  activeOrders().forEach(function(o){ var b = bandFor(now - o.at); if(b === 'yellow') nowY++; if(b === 'red') nowR++; });
+  activeOrders().forEach(function(o){ var b = bandFor(now - effAt(o)); if(b === 'yellow') nowY++; if(b === 'red') nowR++; });
   $('atrNowYellow').textContent = nowY; $('atrNowRed').textContent = nowR;
   atrRaw.forEach(function(o){
     if(!(loja === '*' || lojaOf(o) === loja) || !countedItems(o).length) return;
-    if(o.dispatchedAt){ var ms = o.dispatchedAt - o.at; items.push({ o:o, ms:ms, band:o.dispatchedBand || bandFor(ms), live:false }); }
-    else if(now - o.at <= settings.hideMin*60000){ var m2 = now - o.at; items.push({ o:o, ms:m2, band:bandFor(m2), live:true }); }
+    if(o.dispatchedAt){ var ms = o.dispatchedAt - effAt(o); items.push({ o:o, ms:ms, band:o.dispatchedBand || bandFor(ms), live:false }); }
+    else if(now - effAt(o) <= settings.hideMin*60000){ var m2 = now - effAt(o); items.push({ o:o, ms:m2, band:bandFor(m2), live:true }); }
     else noDisp++;
   });
   var c = { green:0, yellow:0, red:0 }, sum = 0, nd = 0;
@@ -591,16 +595,26 @@ $('amberInput').addEventListener('change', function(){ var v = parseInt(this.val
 $('redInput').addEventListener('change', function(){ var v = parseInt(this.value,10); if(v > settings.amberMin){ settings.redMin = v; saveSettings(); } else this.value = settings.redMin; });
 $('hideInput').addEventListener('change', function(){ var v = parseInt(this.value,10); if(v >= 30){ settings.hideMin = v; saveSettings(); } });
 document.querySelectorAll('[data-preset]').forEach(function(b){ b.addEventListener('click', function(){ var p = b.getAttribute('data-preset').split(','); settings.amberMin = +p[0]; settings.redMin = +p[1]; $('amberInput').value = p[0]; $('redInput').value = p[1]; saveSettings(); }); });
+function printerLabel(name){
+  var l = lojaCfg(); var rota = (l && l.rota) || {}, labels = (l && l.printerLabels) || {};
+  var phys = rota[name] || name; var lab = labels[phys];
+  return name + (lab ? ' — ' + lab : '');
+}
+function lojaCfg(){ return (window._lojasFull || []).find(function(x){ return x.id === loja; }); }
 function renderCats(){
+  var names = {}; settings.kitchenPrinters.forEach(function(n){ names[n] = 1; }); names['POS'] = 1; names['EPSON'] = 1;
+  categories.forEach(function(c){ if(c.printer) names[c.printer] = 1; });
+  orders.forEach(function(o){ (o.items||[]).forEach(function(i){ if(i.printer) names[i.printer] = 1; }); });
   var box = $('catList');
-  if(!categories.length){ box.innerHTML = '<div class="chart-empty">Nenhuma categoria encontrada ainda.</div>'; return; }
-  box.innerHTML = categories.map(function(c){
-    return '<label class="cat-check"><input type="checkbox" data-cat="' + esc(c.id) + '"' + (settings.ignoredCats.indexOf(c.id) < 0 ? ' checked' : '') + '> ' + esc(c.name || c.nome || c.id) + '</label>';
+  box.innerHTML = Object.keys(names).sort().map(function(n){
+    var catsDe = categories.filter(function(c){ return (c.printer || 'POS') === n; }).map(function(c){ return c.name; }).join(', ');
+    return '<label class="cat-check"><input type="checkbox" data-pr="' + esc(n) + '"' + (settings.kitchenPrinters.indexOf(n) >= 0 ? ' checked' : '') + '><span>' + esc(printerLabel(n)) + (catsDe ? '<br><span class="hint">' + esc(catsDe) + '</span>' : '') + '</span></label>';
   }).join('');
   box.querySelectorAll('input').forEach(function(i){ i.addEventListener('change', function(){
-    var id = i.getAttribute('data-cat'), k = settings.ignoredCats.indexOf(id);
-    if(i.checked && k >= 0) settings.ignoredCats.splice(k,1);
-    if(!i.checked && k < 0) settings.ignoredCats.push(id);
+    var n = i.getAttribute('data-pr'), k = settings.kitchenPrinters.indexOf(n);
+    if(i.checked && k < 0) settings.kitchenPrinters.push(n);
+    if(!i.checked && k >= 0) settings.kitchenPrinters.splice(k,1);
+    if(!settings.kitchenPrinters.length){ settings.kitchenPrinters.push(n); i.checked = true; toast('Deixe pelo menos uma impressora marcada.'); }
     saveSettings(); }); });
 }
 function renderAuth(){
@@ -630,20 +644,29 @@ document.querySelectorAll('.tab-btn').forEach(function(b){ b.addEventListener('c
 
 /* ---------- Firebase ---------- */
 function loadLocalSettings(){
-  try{ var s = JSON.parse(lsGet('xg_settings','null')); if(s){ if(s.amberMin>0) settings.amberMin = s.amberMin; if(s.redMin>0) settings.redMin = s.redMin; if(s.hideMin>=30) settings.hideMin = s.hideMin; if(Array.isArray(s.ignoredCats)) settings.ignoredCats = s.ignoredCats; } }catch(e){}
+  try{ var s = JSON.parse(lsGet('xg_settings','null')); if(s){ if(s.amberMin>0) settings.amberMin = s.amberMin; if(s.redMin>0) settings.redMin = s.redMin; if(s.hideMin>=30) settings.hideMin = s.hideMin; if(Array.isArray(s.kitchenPrinters) && s.kitchenPrinters.length) settings.kitchenPrinters = s.kitchenPrinters; } }catch(e){}
 }
 function startListeners(){
   var since = Date.now() - 36*3600*1000;
+  var firstOrders = true;
   db.collection('orders').where('at','>=', since).onSnapshot(function(s){
+    if(!firstOrders){
+      s.docChanges().forEach(function(ch){
+        if(ch.type !== 'added' || ch.doc.metadata.hasPendingWrites || ch.doc.metadata.fromCache) return;
+        var d = ch.doc.data(), k = d.deviceId || d.origin || 'x', diff = Date.now() - d.at;
+        skewBy[k] = Math.abs(diff) > 20000 ? diff - 1000 : 0; lsSet('xg_skew', JSON.stringify(skewBy));
+      });
+    }
+    firstOrders = false;
     orders = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); });
     $('syncDot').classList.add('on'); renderGrid();
   }, function(e){ $('syncDot').classList.remove('on'); toast('Sem acesso aos pedidos: ' + e.message); });
   db.collection('categories').onSnapshot(function(s){ categories = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); renderCats(); }, function(){});
-  db.collection('settings').doc('main').onSnapshot(function(d){ var l = d.exists && d.data().lojas; if(l && l.length){ lojas = l.map(function(x){ return { id:x.id, nome:x.nome }; }); renderLojaPick(); } }, function(){});
+  db.collection('settings').doc('main').onSnapshot(function(d){ var l = d.exists && d.data().lojas; if(l && l.length){ window._lojasFull = l; lojas = l.map(function(x){ return { id:x.id, nome:x.nome }; }); renderLojaPick(); renderCats(); } }, function(){});
   db.collection('settings').doc('painel').onSnapshot(function(d){
     if(!d.exists) return; var s = d.data();
     if(s.amberMin>0) settings.amberMin = s.amberMin; if(s.redMin>0) settings.redMin = s.redMin; if(s.hideMin>=30) settings.hideMin = s.hideMin;
-    if(Array.isArray(s.ignoredCats)) settings.ignoredCats = s.ignoredCats;
+    if(Array.isArray(s.kitchenPrinters) && s.kitchenPrinters.length) settings.kitchenPrinters = s.kitchenPrinters;
     lsSet('xg_settings', JSON.stringify(settings)); applySettingsToInputs();
   }, function(){});
 }
