@@ -581,12 +581,16 @@ $('addGo').addEventListener('click', addManual);
 $('addNum').addEventListener('keydown', function(e){ if(e.key === 'Enter') addManual(); });
 
 /* ---------- atrasos ---------- */
+var _atrCache = {};
 function atrLoad(){
   var sv = $('atrStart').value, ev = $('atrEnd').value; if(!sv || !ev) return;
   var s = new Date(sv).getTime(), e = new Date(ev).getTime();
   var q = function(col){ return db.collection(col).where('at','>=', s).where('at','<=', e).get().then(function(snap){ return snap.docs.map(function(d){ return Object.assign({ id:d.id, _col:col }, d.data()); }); }); };
+  /* economia: período já fechado fica guardado; período com hoje recarrega no máx. a cada 3 min */
+  var key = s + '|' + e, c = _atrCache[key];
+  if(c && (e < Date.now() || Date.now() - c.at < 180000)){ atrRaw = c.data; renderAtrasos(); return; }
   Promise.all([q('orders'), q('painelPedidos').catch(function(){ return []; })])
-    .then(function(r){ atrRaw = r[0].concat(r[1]); renderAtrasos(); })
+    .then(function(r){ atrRaw = r[0].concat(r[1]); _atrCache[key] = { at: Date.now(), data: atrRaw }; renderAtrasos(); })
     .catch(function(err){ atrRaw = []; renderAtrasos(); toast('Erro ao carregar: ' + err.message); });
 }
 function renderAtrasos(){
@@ -702,10 +706,14 @@ document.querySelectorAll('.tab-btn').forEach(function(b){ b.addEventListener('c
 function loadLocalSettings(){
   try{ var s = JSON.parse(lsGet('xg_settings','null')); if(s){ if(s.amberMin>0) settings.amberMin = s.amberMin; if(s.redMin>0) settings.redMin = s.redMin; if(s.hideMin>=30) settings.hideMin = s.hideMin; if(Array.isArray(s.kitchenPrinters) && s.kitchenPrinters.length) settings.kitchenPrinters = s.kitchenPrinters; } }catch(e){}
 }
-function startListeners(){
-  var since = Date.now() - 36*3600*1000;
+var _unsub = [];
+function janela(){ var d0 = new Date(); d0.setHours(0,0,0,0); return Math.min(d0.getTime(), Date.now() - (Math.max(settings.hideMin, 180) + 60) * 60000); }
+function subPedidos(){
+  /* economia: só pedidos de hoje / das últimas horas; renova a janela a cada 4h */
+  _unsub.forEach(function(f){ try{ f(); }catch(e){} }); _unsub = [];
+  var since = janela();
   var firstOrders = true;
-  db.collection('orders').where('at','>=', since).onSnapshot(function(s){
+  _unsub.push(db.collection('orders').where('at','>=', since).onSnapshot(function(s){
     if(!firstOrders){
       s.docChanges().forEach(function(ch){
         if(ch.type !== 'added' || ch.doc.metadata.hasPendingWrites || ch.doc.metadata.fromCache) return;
@@ -716,10 +724,13 @@ function startListeners(){
     firstOrders = false;
     ordersMain = s.docs.map(function(d){ return Object.assign({ id:d.id, _col:'orders' }, d.data()); }); setOrders();
     $('syncDot').classList.add('on'); renderGrid();
-  }, function(e){ $('syncDot').classList.remove('on'); toast('Sem acesso aos pedidos: ' + e.message); });
-  db.collection('painelPedidos').where('at','>=', since).onSnapshot(function(s){
+  }, function(e){ $('syncDot').classList.remove('on'); toast('Sem acesso aos pedidos: ' + e.message); }));
+  _unsub.push(db.collection('painelPedidos').where('at','>=', since).onSnapshot(function(s){
     ordersManual = s.docs.map(function(d){ return Object.assign({ id:d.id, _col:'painelPedidos' }, d.data()); }); setOrders(); renderGrid();
-  }, function(e){ lsSet('xg_manualCol','orders'); });
+  }, function(e){ lsSet('xg_manualCol','orders'); }));
+}
+function startListeners(){
+  subPedidos(); setInterval(subPedidos, 4 * 3600000);
   db.collection('categories').onSnapshot(function(s){ categories = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); renderCats(); }, function(){});
   db.collection('settings').doc('main').onSnapshot(function(d){ var l = d.exists && d.data().lojas; if(l && l.length){ window._lojasFull = l; lojas = l.map(function(x){ return { id:x.id, nome:x.nome }; }); renderLojaPick(); renderCats(); } }, function(){});
   db.collection('settings').doc('painel').onSnapshot(function(d){

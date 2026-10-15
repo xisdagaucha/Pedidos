@@ -88,20 +88,27 @@ function err(m){ var e = $('err'); e.textContent = m; e.style.display = m ? 'blo
   auth.onAuthStateChanged(function(u){
     if(!u){ auth.signInAnonymously().catch(function(e){ err('Login falhou: ' + e.message); }); return; }
     if(started) return; started = true;
-    var first = true;
-    db.collection('orders').where('at','>=', Date.now() - 36*3600*1000).onSnapshot(function(s){
-      if(!first){ s.docChanges().forEach(function(ch){
-        if(ch.type !== 'added' || ch.doc.metadata.hasPendingWrites || ch.doc.metadata.fromCache) return;
-        var d = ch.doc.data(), k = d.deviceId || d.origin || 'x', diff = Date.now() - d.at;
-        skewBy[k] = Math.abs(diff) > 20000 ? diff - 1000 : 0; try{ localStorage.setItem('xg_skew', JSON.stringify(skewBy)); }catch(e){}
-      }); }
-      first = false;
-      ordersMain = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); orders = ordersMain.concat(ordersManual);
-      $('dot').classList.add('on'); err(''); render();
-    }, function(e){ $('dot').classList.remove('on'); err('Sem acesso aos pedidos: ' + e.message); });
-    db.collection('painelPedidos').where('at','>=', Date.now() - 36*3600*1000).onSnapshot(function(s){
-      ordersManual = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); orders = ordersMain.concat(ordersManual); render();
-    }, function(){});
+    /* economia: só pedidos das últimas horas (tempo de ocultar + 1h) e renova a janela a cada 4h */
+    var unsub = [];
+    function since(){ return Date.now() - (Math.max(cfg.hideMin, 180) + 60) * 60000; }
+    function sub(){
+      unsub.forEach(function(f){ try{ f(); }catch(e){} }); unsub = [];
+      var first = true, s0 = since();
+      unsub.push(db.collection('orders').where('at','>=', s0).onSnapshot(function(s){
+        if(!first){ s.docChanges().forEach(function(ch){
+          if(ch.type !== 'added' || ch.doc.metadata.hasPendingWrites || ch.doc.metadata.fromCache) return;
+          var d = ch.doc.data(), k = d.deviceId || d.origin || 'x', diff = Date.now() - d.at;
+          skewBy[k] = Math.abs(diff) > 20000 ? diff - 1000 : 0; try{ localStorage.setItem('xg_skew', JSON.stringify(skewBy)); }catch(e){}
+        }); }
+        first = false;
+        ordersMain = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); orders = ordersMain.concat(ordersManual);
+        $('dot').classList.add('on'); err(''); render();
+      }, function(e){ $('dot').classList.remove('on'); err('Sem acesso aos pedidos: ' + e.message); }));
+      unsub.push(db.collection('painelPedidos').where('at','>=', s0).onSnapshot(function(s){
+        ordersManual = s.docs.map(function(d){ return Object.assign({ id:d.id }, d.data()); }); orders = ordersMain.concat(ordersManual); render();
+      }, function(){}));
+    }
+    sub(); setInterval(sub, 4 * 3600000);
     db.collection('settings').doc('painel').onSnapshot(function(d){
       if(!d.exists) return; var s = d.data();
       if(s.amberMin>0) cfg.amberMin = s.amberMin; if(s.redMin>0) cfg.redMin = s.redMin; if(s.hideMin>=30) cfg.hideMin = s.hideMin;
