@@ -683,7 +683,7 @@ const LOGO_FAVICON = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYA
 
 /* ===================== Pedido X — núcleo ===================== */
 'use strict';
-const APP_VERSION = '2.9.1';
+const APP_VERSION = '2.9.2';
 
 /* ---------- utilitários ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -752,7 +752,7 @@ function optTxt(o, withPrice = false, paper = false) {
 }
 /* situação de um tablet: online, bateria baixa, carregando */
 const Dev = {
-  online: d => Date.now() - (d.lastSeen || 0) < 3 * 60000,
+  online: d => Date.now() - (d.lastSeen || 0) < 12 * 60000,
   low: d => d.kind === 'tablet' && Dev.online(d) && d.battery != null && d.battery <= (Store.settings().batteryAlert || 20) && !d.charging,
   bat(d) {
     if (d.battery == null) return '<span class="muted">–</span>';
@@ -1871,7 +1871,11 @@ const Tablet = {
     try { if (battery == null && navigator.getBattery) { const b = await navigator.getBattery(); battery = Math.round(b.level * 100); charging = b.charging;
       if (!this._batHook) { this._batHook = true; const again = () => this.beat(); b.addEventListener('chargingchange', again); b.addEventListener('levelchange', debounce(again, 2000)); } } } catch (e) { }
     const ua = navigator.userAgent; const model = (ua.match(/(SM-[A-Z0-9]+)/) || ua.match(/Android [\d.]+; ([^;)]+)/) || [, 'Navegador'])[1];
-    Store.update('devices', this.deviceId, { kind: 'tablet', mesa: this.mesa, reserva: this.reserva ? this.reserva.nome : null, model, battery, charging, dormindo: !!this.asleep, lastSeen: Date.now(), ver: APP_VERSION, online: navigator.onLine }).catch(() => { });
+    /* economia da cota do Firebase: só grava se algo importante mudou ou a cada 5 minutos */
+    const sig = [this.mesa, this.reserva ? this.reserva.nome : '', charging, battery == null ? '' : Math.floor(battery / 5), Loja.w()].join('|');
+    if (sig === this._beatSig && Date.now() - (this._beatAt || 0) < 5 * 60000) return;
+    this._beatSig = sig; this._beatAt = Date.now();
+    Store.update('devices', this.deviceId, { kind: 'tablet', mesa: this.mesa, reserva: this.reserva ? this.reserva.nome : null, model, battery, charging, dormindo: !!this.asleep, lastSeen: Date.now(), ver: APP_VERSION, online: navigator.onLine }).catch(() => { this._beatSig = null; });
   },
 
   vis(i) { return !!i && i.visible !== false && Horario.item(i); },
@@ -2355,7 +2359,7 @@ const PDV = {
     if (low.length) out.push(`<div class="alert bad">${ico('tablet')}<div class="grow"><b>Bateria baixa:</b> ${low.map(d => `mesa ${d.mesa || '?'} (${d.battery}%)`).join(', ')}. Coloque ${low.length > 1 ? 'esses tablets' : 'o tablet'} para carregar.</div></div>`);
     if (stuck.length) out.push(`<div class="alert bad">${ico('printer')}<div class="grow"><b>${plural(stuck.length, 'impressão parada', 'impressões paradas')}</b>. Confira se o computador do caixa está ligado e o programa de impressão aberto.</div></div>`);
     const ag = Store.all('devices').filter(d => d.kind === 'agente').sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0))[0];
-    if (Store.mode === 'firebase' && (!ag || Date.now() - ag.lastSeen > 120000)) out.push(`<div class="alert bad">${ico('printer')}<div class="grow">O programa de impressão não está respondendo${ag ? ' desde ' + fmtTime(ag.lastSeen) : ''}.</div></div>`);
+    if (Store.mode === 'firebase' && (!ag || Date.now() - ag.lastSeen > 12 * 60000)) out.push(`<div class="alert bad">${ico('printer')}<div class="grow">O programa de impressão não está respondendo${ag ? ' desde ' + fmtTime(ag.lastSeen) : ''}.</div></div>`);
     if (!this.caixaAberto()) out.push(`<div class="alert">${ico('cash')}<div class="grow">O caixa do dia ainda não foi aberto.</div><button class="btn sm" data-nav2="caixa">Abrir caixa</button></div>`);
     return out.join('');
   },
@@ -2660,7 +2664,7 @@ const PDV = {
     const lim = this.prLim || 60, shown = jobs.slice(0, lim);
     const cnt = k => k === 'erro' ? all.filter(j => j.status === 'error' || (j.status === 'pending' && Date.now() - j.at > 30000)).length : k ? all.filter(j => GRUPO[k].includes(j.kind)).length : all.length;
     const ag = Store.all('devices').filter(d => d.kind === 'agente').sort((x, y) => (y.lastSeen || 0) - (x.lastSeen || 0))[0];
-    pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Impressões</h1><div class="sub">${Store.mode === 'demo' ? 'Na demonstração, cada comanda aparece aqui como seria impressa.' : (ag && Date.now() - ag.lastSeen < 120000 ? `<span class="pill ok">programa de impressão ativo</span>` : `<span class="pill bad">programa de impressão sem resposta</span>`)}</div></div>
+    pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Impressões</h1><div class="sub">${Store.mode === 'demo' ? 'Na demonstração, cada comanda aparece aqui como seria impressa.' : (ag && Date.now() - ag.lastSeen < 12 * 60000 ? `<span class="pill ok">programa de impressão ativo</span>` : `<span class="pill bad">programa de impressão sem resposta</span>`)}</div></div>
       ${s.printers.map(p => `<button class="btn" data-test="${p}">${ico('printer')} Testar ${esc(p)} (${esc(s.printerLabels?.[p] || '')})</button>`).join('')}</div>
       <div class="card col pr-filtros" style="gap:12px"><div class="chips">${[['turno', 'Turno atual'], ['hoje', 'Hoje'], ['ontem', 'Ontem'], ['periodo', 'Escolher período']].map(([k, t]) => `<button data-pp="${k}" class="${F.per === k ? 'on' : ''}">${t}</button>`).join('')}</div>
         ${F.per === 'periodo' ? `<div class="row"><label class="field"><span>De</span><input class="input" type="date" id="pr-de" value="${F.de}"></label><label class="field"><span>Até</span><input class="input" type="date" id="pr-ate" value="${F.ate}"></label></div>` : ''}
@@ -2830,10 +2834,20 @@ const Gestora = {
   _memo: {},
   /* consultas de relatório ficam guardadas por 2 minutos para não gastar leituras do Firebase */
   async q(coll, field, from, to) {
+    /* economia da cota do Firebase: dias que já passaram são lidos uma vez só (até tocar em Atualizar);
+       só o pedaço de hoje é relido, no máximo a cada 3 minutos */
     const now = Date.now(); if (to > now) to = Math.ceil(now / 60000) * 60000 + 1;
-    const key = Loja.cur() + coll + field + from + '_' + to, m = this._memo[key];
-    if (m && now - m.at < (Store.mode === 'demo' ? 0 : 120000)) return m.data;
-    const data = await Store.range(coll, field, from, to); this._memo[key] = { at: now, data }; return data;
+    const hoje = dayStart(), demo = Store.mode === 'demo';
+    const get = async (a, b, ttl) => {
+      const key = Loja.cur() + coll + field + a + '_' + (b > now ? 'agora' : b), m = this._memo[key];
+      if (m && (ttl == null || now - m.at < ttl)) return m.data;
+      const data = await Store.range(coll, field, a, b); this._memo[key] = { at: now, data }; return data;
+    };
+    if (demo) return Store.range(coll, field, from, to);
+    if (to <= hoje) return get(from, to, null);
+    if (from >= hoje) return get(from, to, 180000);
+    const [pass, atual] = await Promise.all([get(from, hoje, null), get(hoje, to, 180000)]);
+    return pass.concat(atual);
   },
   async loadTickets(from, to) {
     const all = await this.q('tickets', 'closedAt', from, to);
