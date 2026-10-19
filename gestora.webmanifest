@@ -1,6 +1,6 @@
 {
- "name": "Xis da Gaúcha · Gestora",
- "short_name": "Gestora Xis",
+ "name": "Xis da Gaúcha · Gestão",
+ "short_name": "Gestão Xis",
  "start_url": "gestora.html",
  "scope": "./",
  "display": "standalone",

@@ -4,7 +4,7 @@
 <meta name="theme-color" content="#0e1310"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="manifest" href="gestora.webmanifest"><link rel="icon" href="icon-gestora-192.png"><link rel="apple-touch-icon" href="icon-gestora-192.png">
 <script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
-<title>Gestora · Xis da Gaúcha</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&family=JetBrains+Mono:wght@500;800&display=swap"><style>/* Layout: sinalização de lanchonete — grafite e verde do logo, títulos condensados como placa de chapa, números tabulares no caixa */
+<title>Gestão · Xis da Gaúcha</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&family=JetBrains+Mono:wght@500;800&display=swap"><style>/* Layout: sinalização de lanchonete — grafite e verde do logo, títulos condensados como placa de chapa, números tabulares no caixa */
 :root{
   --bg:#f3f5f2; --surface:#ffffff; --surface-2:#eaeee8; --line:#d7ddd4;
   --fg:#16201a; --muted:#5d6b61; --accent:#1c8f4e; --accent-ink:#ffffff; --accent-soft:#dcefe3;
@@ -794,7 +794,7 @@ const Codes = {
   op(code) { const c = Codes.norm(code); return c ? Store.all('operators').find(o => o.pin === c || Codes.norm(o.badge) === c) || null : null; },
   gestora(code) {
     const c = Codes.norm(code), s = Store.settings(); if (!c) return null;
-    if (c === s.gestoraPin || (s.gestoraBadge && Codes.norm(s.gestoraBadge) === c)) return { id: 'gestora', name: 'Gestora', role: 'gestora' };
+    if (c === s.gestoraPin || (s.gestoraBadge && Codes.norm(s.gestoraBadge) === c)) return { id: 'gestora', name: 'Gestão', role: 'gestora' };
     const o = Codes.op(c); return o && o.role === 'gestora' ? o : null;
   },
   novo() { let c; do { c = 'XG' + String(Math.floor(100000 + Math.random() * 900000)); } while (Store.all('operators').some(o => o.badge === c)); return c; },
@@ -986,7 +986,7 @@ const Contas = {
 
 /* ======================= LOJAS ======================= */
 /* cada aparelho pertence a uma loja; pedidos, comandas, impressões, caixa e equipe ficam separados por loja.
-   cardápio, fotos e destaques são os mesmos para todas. A gestora pode ver uma loja ou todas. */
+   cardápio, fotos e destaques são os mesmos para todas. A gestão pode ver uma loja ou todas. */
 const SCOPED = ['comandas', 'tickets', 'orders', 'events', 'calls', 'printJobs', 'devices', 'surveys', 'caixas', 'equipe', 'pessoas', 'vouchers'];
 const LOJA_FIELDS = ['mesas', 'comandas', 'printers', 'printerLabels', 'printerCols', 'contaPrinter', 'chamadoPrinter', 'rota', 'staffToday', 'qrCodes'];
 const Loja = {
@@ -1632,15 +1632,15 @@ function seedDemo(S) {
       if (Q() < .5 && !(d === 0 && new Date(now).getHours() < 20)) { const n = equipeNomes[Math.floor(Q() * equipeNomes.length)]; const it = Q() < .5 ? coca : mini;
         if (it) put('equipe', 'ec' + d, { kind: 'consumo', at: day + 20 * 3600000, nome: n, tipo: 'funcionario', items: [{ itemId: it.id, name: it.name, catId: it.catId, qty: 1, unit: it.price, opts: [], printer: 'EPSON' }], total: it.price, desconto: 0, aDescontar: it.price, by: 'Kelli', demo: true }); }
     } }
-  put('vouchers', 'v1', { nome: 'Laiane', valor: 150, saldo: 150, motivo: 'Sem atrasos e sem faltas · setembro de 2026', at: now - 5 * DAY, by: 'Gestora' });
-  put('vouchers', 'v2', { nome: 'Denize', valor: 150, saldo: 113, motivo: 'Sem atrasos e sem faltas · setembro de 2026', at: now - 5 * DAY, by: 'Gestora' });
+  put('vouchers', 'v1', { nome: 'Laiane', valor: 150, saldo: 150, motivo: 'Sem atrasos e sem faltas · setembro de 2026', at: now - 5 * DAY, by: 'Gestão' });
+  put('vouchers', 'v2', { nome: 'Denize', valor: 150, saldo: 113, motivo: 'Sem atrasos e sem faltas · setembro de 2026', at: now - 5 * DAY, by: 'Gestão' });
   put('operators', 'op1', { name: 'Kelli', pin: '1111', role: 'caixa', badge: 'XG104211', lojas: ['barreiros'] });
   put('operators', 'op2', { name: 'Laiane', pin: '2222', role: 'caixa', badge: 'XG104212', lojas: ['barreiros'] });
   put('operators', 'op4', { name: 'Caixa Palhoça', pin: '3333', role: 'caixa', badge: 'XG104214', lojas: ['palhoca'] });
   /* Palhoça (exemplo): equipe, voucher e um tablet */
   ['Bruna', 'Carlos', 'Fernanda'].forEach((n, i) => put('pessoas', 'pp' + i, { nome: n, tipo: 'funcionario', loja: 'palhoca' }));
   put('pessoas', 'ppe', { nome: 'Entregador Palhoça', tipo: 'entregador', loja: 'palhoca' });
-  put('vouchers', 'vp1', { nome: 'Bruna', valor: 150, saldo: 150, motivo: 'Sem atrasos e sem faltas · setembro de 2026', at: now - 5 * DAY, by: 'Gestora', loja: 'palhoca' });
+  put('vouchers', 'vp1', { nome: 'Bruna', valor: 150, saldo: 150, motivo: 'Sem atrasos e sem faltas · setembro de 2026', at: now - 5 * DAY, by: 'Gestão', loja: 'palhoca' });
   put('devices', 'tab-pal1', { kind: 'tablet', mesa: 3, model: 'Samsung SM-X110', battery: 66, charging: false, lastSeen: now, ver: APP_VERSION, loja: 'palhoca' });
   put('operators', 'op3', { name: 'Andrenize', pin: '1234', role: 'gestora', badge: 'XG104213' });
 
@@ -2203,12 +2203,12 @@ const Tablet = {
     ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, stop));
     el.addEventListener('contextmenu', e => e.preventDefault());
   },
-  /* senha do caixa ou da gestora (o tablet não lê a lista de operadores: usa a senha do tablet das configurações) */
+  /* senha do caixa ou da gestão (o tablet não lê a lista de operadores: usa a senha do tablet das configurações) */
   pinOk(p) { p = Codes.norm(p); if (!p) return false; const s = Store.settings(); return p === String(s.tabletPin || '') || !!Codes.gestora(p) || (Store.isStaff() && !!Codes.op(p)); },
   async needPin(val, what) {
     if (val && this.pinOk(val)) return true;
     if (val) { toast('Senha incorreta', 'bad'); return false; }
-    return !!(await askPin({ title: what, hint: 'Senha do caixa ou da gestora', check: p => this.pinOk(p) }));
+    return !!(await askPin({ title: what, hint: 'Senha do caixa ou da gestão', check: p => this.pinOk(p) }));
   },
   get reserva() { return lsGet('pedidox_reserva', null); },
   tableOptions() {
@@ -2221,7 +2221,7 @@ const Tablet = {
         <button class="mo-ic" data-x aria-label="Fechar">${ico('x')}</button></div>
       <div class="mo-grid">${Loja.multi() ? `<label class="field"><span>Loja</span><select class="input" id="mo-l">${Loja.list().map(l => `<option value="${l.id}" ${l.id === lj0 ? 'selected' : ''}>${esc(l.nome)}</option>`).join('')}</select></label>` : ''}
         <label class="field"><span>Selecione a mesa</span><select class="input" id="mo-m">${opts(lj0)}</select></label>
-        <label class="field"><span>Senha (caixa ou gestora)</span><input class="input num" id="mo-p" type="password" inputmode="numeric" autocomplete="off" placeholder="Digite sua senha"></label></div>
+        <label class="field"><span>Senha (caixa ou gestão)</span><input class="input num" id="mo-p" type="password" inputmode="numeric" autocomplete="off" placeholder="Digite sua senha"></label></div>
       <div class="mo-btns"><button class="mo-go" id="mo-tr">Trocar de mesa</button><button class="mo-go" id="mo-rs">${this.reserva ? 'Mesa reservada' : 'Reservar mesa'}</button></div>
       <p class="mo-info">Aparelho: ${esc(this.deviceId)} · ${esc(Loja.nome(lj0))} · mesa atual: ${this.mesa || '–'} · versão ${APP_VERSION} · ${navigator.onLine ? 'internet OK' : 'SEM INTERNET'}</p>` });
     const ml = $('#mo-l', m.el); if (ml) ml.onchange = () => { $('#mo-m', m.el).innerHTML = opts(ml.value); };
@@ -2264,7 +2264,7 @@ const Tablet = {
 
   async deviceSetup(first = false) {
     if (!first) {
-      const ok = await askPin({ title: 'Configurar tablet', hint: 'PIN da gestora', check: p => !!Codes.gestora(p) });
+      const ok = await askPin({ title: 'Configurar tablet', hint: 'PIN da gestão', check: p => !!Codes.gestora(p) });
       if (!ok) return;
     }
     const s = Store.settings();
@@ -2296,16 +2296,16 @@ const PDV = {
     if (op) { this.op = { id: op.id, name: op.name, role: op.role }; this.render(); return true; }
     return false;
   },
-  /* senha de gestora para cancelar (se ligado nas configurações) */
+  /* senha de gestão para cancelar (se ligado nas configurações) */
   async authorize(what) {
     if (!Store.settings().cancelPin) return this.op ? this.op.name : 'Caixa';
-    const g = await askPin({ title: 'Autorizar ' + what, hint: 'PIN ou crachá da gestora', check: p => Codes.gestora(p) });
+    const g = await askPin({ title: 'Autorizar ' + what, hint: 'PIN ou crachá da gestão', check: p => Codes.gestora(p) });
     return g ? `${this.op ? this.op.name : 'Caixa'} (aut. ${g.name})` : null;
   },
-  /* qual loja é este caixa: escolhido uma vez, com PIN da gestora */
+  /* qual loja é este caixa: escolhido uma vez, com PIN da gestão */
   renderPickLoja() {
     this.root.innerHTML = `<div class="chooser"><div class="brand"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span class="name">Caixa<small>${esc(Store.settings().storeName)}</small></span></div>
-      <div><h1>Este caixa é de qual loja?</h1><p class="muted" style="margin:6px 0 0">Fica salvo neste computador. Pedidos, impressões e o caixa do dia ficam só desta loja. Pede o PIN da gestora.</p></div>
+      <div><h1>Este caixa é de qual loja?</h1><p class="muted" style="margin:6px 0 0">Fica salvo neste computador. Pedidos, impressões e o caixa do dia ficam só desta loja. Pede o PIN da gestão.</p></div>
       <div class="opts">${Loja.list().map(l => `<button class="opt" data-lj="${l.id}">${ico('store')}<h3>${esc(l.nome)}</h3><span class="muted">${plural((l.printers || []).length, 'impressora', 'impressoras')}: ${esc((l.printers || []).join(', '))}</span></button>`).join('')}</div></div>`;
     $$('[data-lj]', this.root).forEach(b => b.onclick = () => this.pickLoja(false, b.dataset.lj));
   },
@@ -2315,7 +2315,7 @@ const PDV = {
       id = await new Promise(res => { rs = res; $$('[data-lj]', m.el).forEach(b => b.onclick = () => { const v = b.dataset.lj; rs = null; m.close(); res(v); }); });
       if (!id || id === Loja.cur()) return;
     }
-    if (Store.mode !== 'demo' || ask) { const g = await askPin({ title: 'Autorizar troca de loja', hint: 'PIN ou crachá da gestora', check: p => Codes.gestora(p) }); if (!g) return; }
+    if (Store.mode !== 'demo' || ask) { const g = await askPin({ title: 'Autorizar troca de loja', hint: 'PIN ou crachá da gestão', check: p => Codes.gestora(p) }); if (!g) return; }
     Loja.set(id); this.op = null; this.ficha = null; this.view = 'salao'; Store.bump('items'); toast('Caixa da loja ' + Loja.nome(id)); this.render();
   },
   caixaAberto() { return Store.all('caixas').find(c => c.status === 'aberto') || null; },
@@ -2621,7 +2621,7 @@ const PDV = {
   },
 
   /* impressões: filtro por turno / hoje / ontem / período, tipo, impressora e busca; fila em lista vertical */
-  /* bateria dos tablets: só para ver (quem remove aparelho é a gestora) */
+  /* bateria dos tablets: só para ver (quem remove aparelho é a gestão) */
   renderTablets(pg) {
     const porMesa = {}; Store.all('devices').filter(d => d.kind === 'tablet' && Date.now() - (d.lastSeen || 0) < 7 * 86400000).forEach(d => { const k = d.mesa || d.id; if (!porMesa[k] || (d.lastSeen || 0) > (porMesa[k].lastSeen || 0)) porMesa[k] = d; });
     const ds = Object.values(porMesa).sort((a, b) => (+a.mesa || 999) - (+b.mesa || 999));
@@ -2731,7 +2731,7 @@ const PDV = {
   movCaixa(cx, tipo) {
     const saida = tipo === 'saida';
     const m = modal({ title: saida ? 'Retirar dinheiro do caixa' : 'Colocar dinheiro no caixa', body: `<label class="field"><span>Valor (R$)</span><input class="input num" id="mv-v" inputmode="decimal" placeholder="0,00" style="font-size:24px;font-weight:700;max-width:200px"></label>
-      <label class="field"><span>Motivo</span><input class="input" id="mv-m" placeholder="${saida ? 'Ex.: pagamento de fornecedor, depósito, retirada da gestora' : 'Ex.: troco extra'}"></label>
+      <label class="field"><span>Motivo</span><input class="input" id="mv-m" placeholder="${saida ? 'Ex.: pagamento de fornecedor, depósito, retirada da gestão' : 'Ex.: troco extra'}"></label>
       <label class="row small"><input type="checkbox" id="mv-p" checked> Imprimir comprovante para assinar</label>`, foot: `<button class="btn" data-x>Cancelar</button><button class="btn primary" id="mv-ok">${saida ? 'Registrar retirada' : 'Registrar entrada'}</button>` });
     setTimeout(() => $('#mv-v', m.el).focus(), 50);
     $('#mv-ok', m.el).onclick = async () => {
@@ -2856,16 +2856,16 @@ const Gestora = {
 
   async render() {
     if (!this.root) return;
-    if (!Store.isStaff()) return renderLogin(this.root, 'Gestora');
+    if (!Store.isStaff()) return renderLogin(this.root, 'Gestão');
     Biz.migrar();
     if (!this.unlocked) {
       if (this.root._pp && $('.g-login', this.root)) return;
-      pinScreen(this.root, { area: 'Área da gestora', quem: 'gestora', texto: `Digite seu PIN ou passe o crachá no leitor para acompanhar ${Loja.multi() ? 'as duas lojas' : 'a loja'}.`, titulo: 'PIN de gestora', check: p => Codes.gestora(p), onOk: () => { this.unlocked = true; this.render(); }, demo: Store.mode === 'demo' ? 'Demonstração: PIN 1234.' : '' });
+      pinScreen(this.root, { area: 'Área da gestão', quem: Store.settings().storeName || 'gestão', texto: `Digite seu PIN ou passe o crachá no leitor para acompanhar ${Loja.multi() ? 'as duas lojas' : 'a loja'}.`, titulo: 'PIN de gestão', check: p => Codes.gestora(p), onOk: r => { this.unlocked = true; this.quem = (r && r.id !== 'gestora' && r.name) || 'Gestão'; this.render(); }, demo: Store.mode === 'demo' ? 'Demonstração: PIN 1234.' : '' });
       return;
     }
     const nav = [['inicio', 'home', 'Início'], ['analises', 'chart', 'Análises'], ['pesquisa', 'smile', 'Pesquisa de satisfação'], ['contas', 'receipt', 'Contas e fechamento'], ['movs', 'list', 'Movimentações'], ['consumo', 'receipt', 'Consumo da equipe'], null, ['cardapio', 'menu', 'Cardápio'], ['destaques', 'star', 'Destaques do tablet'], ['mesas', 'qr', 'Mesas e comandas'], ['equipe', 'users', 'Equipe'], ['dispositivos', 'tablet', 'Dispositivos'], ['config', 'gear', 'Configurações']];
     const scroll = $('.main', this.root)?.scrollTop || 0;
-    this.root.innerHTML = `<div class="shell"><aside class="side"><div class="brand"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span class="name">Gestora<small>${esc(Loja.all() ? 'Todas as lojas' : Loja.nome())}</small></span></div>
+    this.root.innerHTML = `<div class="shell"><aside class="side"><div class="brand"><span class="mark"><span class="logo" aria-hidden="true"></span></span><span class="name">${esc(this.quem && this.quem !== 'Gestão' ? this.quem : 'Gestão')}<small>${esc(Loja.all() ? 'Todas as lojas' : Loja.nome())}</small></span></div>
       ${nav.map(n => n ? `<button class="nav ${this.view === n[0] ? 'on' : ''}" data-nav="${n[0]}">${ico(n[1])} ${n[2]}</button>` : '<div class="sep"></div>').join('')}
       <div class="sep"></div><button class="nav" id="g-rl">${ico('refresh')} Atualizar</button><button class="nav" id="g-lock">${ico('lock')} Bloquear</button><div class="foot">Pedido X · versão ${APP_VERSION}</div></aside>
       <nav class="mob-nav">${nav.filter(Boolean).map(n => `<button class="${this.view === n[0] ? 'on' : ''}" data-nav="${n[0]}">${n[2]}</button>`).join('')}</nav>
@@ -3240,11 +3240,11 @@ const Gestora = {
   async vEquipe(pg) {
     const ops = Store.all('operators').sort((a, b) => a.name.localeCompare(b.name));
     pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Equipe</h1><div class="sub">Quem usa o caixa. Entra com o PIN ou passando o crachá no leitor. Fica registrado quem lançou, cancelou e fechou cada conta.</div></div><button class="btn" id="cr-print">${ico('printer')} Imprimir crachás</button><button class="btn primary" id="eq-new">${ico('plus')} Pessoa</button></div>
-      <div class="table-wrap"><table class="t"><thead><tr><th>Nome</th><th>Função</th>${Loja.multi() ? '<th>Loja</th>' : ''}<th>PIN</th><th>Crachá</th><th></th></tr></thead><tbody>${ops.map(o => `<tr><td>${esc(o.name)}</td><td>${o.role === 'gestora' ? '<span class="pill ok">gestora</span>' : 'caixa / atendimento'}</td>${Loja.multi() ? `<td>${!o.lojas || !o.lojas.length || o.lojas.length >= Loja.list().length ? 'Todas' : o.lojas.map(id => esc(Loja.curto(id))).join(', ')}</td>` : ''}<td class="num">••••</td><td>${o.badge ? `<span class="badge-svg" data-bc="${esc(o.badge)}"></span>` : '<span class="muted">sem crachá</span>'}</td><td class="r"><button class="icon-btn" data-oe="${o.id}" aria-label="Editar">${ico('edit')}</button><button class="icon-btn" data-od="${o.id}" aria-label="Excluir" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('')}</tbody></table></div>
-      <p class="muted small" style="margin:0">Quem é "gestora" também autoriza cancelamentos e a troca do prato da equipe com o próprio PIN ou crachá. O leitor de código de barras é o mesmo USB do estoque: é só ligar no computador do caixa.</p>`;
+      <div class="table-wrap"><table class="t"><thead><tr><th>Nome</th><th>Função</th>${Loja.multi() ? '<th>Loja</th>' : ''}<th>PIN</th><th>Crachá</th><th></th></tr></thead><tbody>${ops.map(o => `<tr><td>${esc(o.name)}</td><td>${o.role === 'gestora' ? '<span class="pill ok">gestão</span>' : 'caixa / atendimento'}</td>${Loja.multi() ? `<td>${!o.lojas || !o.lojas.length || o.lojas.length >= Loja.list().length ? 'Todas' : o.lojas.map(id => esc(Loja.curto(id))).join(', ')}</td>` : ''}<td class="num">••••</td><td>${o.badge ? `<span class="badge-svg" data-bc="${esc(o.badge)}"></span>` : '<span class="muted">sem crachá</span>'}</td><td class="r"><button class="icon-btn" data-oe="${o.id}" aria-label="Editar">${ico('edit')}</button><button class="icon-btn" data-od="${o.id}" aria-label="Excluir" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('')}</tbody></table></div>
+      <p class="muted small" style="margin:0">Quem é da gestão também autoriza cancelamentos e a troca do prato da equipe com o próprio PIN ou crachá. O leitor de código de barras é o mesmo USB do estoque: é só ligar no computador do caixa.</p>`;
     const ed = o => {
       let badge = o.badge || '';
-      const m = modal({ title: o.id ? 'Editar pessoa' : 'Nova pessoa', body: `<label class="field"><span>Nome</span><input class="input" id="eo-n" value="${esc(o.name || '')}"></label><label class="field"><span>PIN (4 números)</span><input class="input num" id="eo-p" inputmode="numeric" maxlength="4" value="${esc(o.pin || '')}"></label><label class="field"><span>Função</span><select class="input" id="eo-r"><option value="caixa">Caixa / atendimento</option><option value="gestora" ${o.role === 'gestora' ? 'selected' : ''}>Gestora</option></select></label>
+      const m = modal({ title: o.id ? 'Editar pessoa' : 'Nova pessoa', body: `<label class="field"><span>Nome</span><input class="input" id="eo-n" value="${esc(o.name || '')}"></label><label class="field"><span>PIN (4 números)</span><input class="input num" id="eo-p" inputmode="numeric" maxlength="4" value="${esc(o.pin || '')}"></label><label class="field"><span>Função</span><select class="input" id="eo-r"><option value="caixa">Caixa / atendimento</option><option value="gestora" ${o.role === 'gestora' ? 'selected' : ''}>Gestão (gestor ou gestora)</option></select></label>
         ${Loja.multi() ? `<div class="field"><span>Trabalha em</span><div class="row">${Loja.list().map(l => `<label class="row small" style="gap:6px"><input type="checkbox" data-olj="${l.id}" ${!o.lojas || !o.lojas.length || o.lojas.includes(l.id) ? 'checked' : ''}> ${esc(l.nome)}</label>`).join('')}</div><span class="muted small">Só entra no caixa das lojas marcadas.</span></div>` : ''}
         <label class="field"><span>Código do crachá</span><div class="row"><input class="input grow" id="eo-b" value="${esc(badge)}" placeholder="Clique aqui e passe um crachá que já existe, ou gere um novo"><button class="btn" id="eo-g" type="button">Gerar novo</button></div></label><div id="eo-prev" style="min-height:70px"></div>`, foot: '<button class="btn" data-x>Cancelar</button><button class="btn primary" id="eo-ok">Salvar</button>' });
       const prev = async () => { const v = Codes.norm($('#eo-b', m.el).value); $('#eo-prev', m.el).innerHTML = v ? await barcodeSvg(v) : ''; };
@@ -3292,7 +3292,7 @@ const Gestora = {
     const list = (id, arr) => `<textarea class="input" id="${id}" rows="${Math.max(3, arr.length)}">${esc(arr.join('\n'))}</textarea>`;
     pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Configurações</h1><div class="sub">${Store.mode === 'demo' ? 'Modo demonstração: os dados ficam só neste navegador.' : 'Conectado ao Firebase · as mudanças valem para todos os aparelhos.'}</div></div><button class="btn primary" id="cf-save">Salvar configurações</button></div>
       <div class="card col"><h3>Marca</h3><div class="row"><label class="field grow"><span>Nome</span><input class="input" id="cf-n" value="${esc(s.storeName)}"></label>
-        <label class="field"><span>PIN de gestora</span><input class="input num" id="cf-gp" maxlength="4" inputmode="numeric" value="${esc(s.gestoraPin)}" style="width:120px"></label></div>
+        <label class="field"><span>PIN de gestão</span><input class="input num" id="cf-gp" maxlength="4" inputmode="numeric" value="${esc(s.gestoraPin)}" style="width:120px"></label></div>
         <label class="row"><span class="switch"><input type="checkbox" id="cf-det" ${s.detailedPrint !== false ? 'checked' : ''}><i></i></span> Impressão detalhada (adicionais em cada linha da conta)</label></div>
       <div class="card col"><h3>Como a comanda sai na impressora</h3>
         <div class="grid-2"><div class="col">
@@ -3313,8 +3313,8 @@ const Gestora = {
         <div class="row"><label class="field grow"><span>Pedidos da cozinha saem na</span>${sel(`data-lr="${l.id}|POS"`, (l.rota || {}).POS || ps[0])}</label><label class="field grow"><span>Itens do caixa (bebidas) saem na</span>${sel(`data-lr="${l.id}|EPSON"`, (l.rota || {}).EPSON || ps[ps.length - 1])}</label></div>
         <div class="row"><label class="field grow"><span>Pré-conta e fechamento</span>${sel(`data-lcp="${l.id}"`, l.contaPrinter)}</label><label class="field grow"><span>Chamado de garçom</span>${sel(`data-lch="${l.id}"`, l.chamadoPrinter)}</label></div>
         <p class="muted small" style="margin:0">${l.mesas || 20} mesas e ${l.comandas || 60} comandas (muda em Mesas e comandas).</p></div>`; }).join('')}</div>
-      <div class="card"><h3 style="margin-bottom:12px">Tablet</h3><div class="row" style="margin-bottom:14px"><label class="field"><span>Senha do tablet (caixa)</span><input class="input num" id="cf-tp" maxlength="6" inputmode="numeric" value="${esc(s.tabletPin || '')}" style="width:140px"></label><span class="muted small grow" style="align-self:flex-end">Segure o botão "Mesa" no tablet para abrir as opções. Trocar de mesa e sair do aplicativo pedem esta senha ou a da gestora.</span></div><div class="row" style="margin-bottom:14px;align-items:flex-end"><label class="row" style="gap:10px"><span class="switch"><input type="checkbox" id="cf-sl" ${(s.tabletSleep || {}).on !== false ? 'checked' : ''}><i></i></span><b>Economia de bateria</b></label><label class="field"><span>Apagar a tela depois de</span><span class="row" style="gap:6px"><input class="input num" id="cf-slm" type="number" min="1" max="60" value="${(s.tabletSleep || {}).min || 3}" style="width:80px"> minutos sem uso</span></label><span class="muted small grow">A tela fica preta com o brilho no mínimo. Um toque acende de novo, sem fazer pedido.</span></div><div class="col">${F.map(([k, t, d]) => `<label class="row" style="align-items:flex-start;gap:12px"><span class="switch"><input type="checkbox" data-ft="${k}" ${s.features[k] ? 'checked' : ''}><i></i></span><span><b>${t}</b><br><span class="muted small">${d}</span></span></label>`).join('')}</div></div>
-      <div class="grid-2"><div class="card col"><h3>Caixa</h3><label class="row"><span class="switch"><input type="checkbox" id="cf-cpin" ${s.cancelPin ? 'checked' : ''}><i></i></span> Pedir PIN de gestora para cancelar</label><label class="field"><span>Taxa de serviço padrão (%)</span><input class="input num" id="cf-fee" value="${s.serviceFeeDefault || 0}" style="width:100px"></label><label class="field"><span>Formas de pagamento (uma por linha)</span>${list('cf-pm', s.paymentMethods)}<span class="muted small">Para criar uma forma nova, escreva numa linha nova e clique em Salvar. Para tirar, apague a linha. Aparece no caixa, no fechamento e nos relatórios.</span></label></div>
+      <div class="card"><h3 style="margin-bottom:12px">Tablet</h3><div class="row" style="margin-bottom:14px"><label class="field"><span>Senha do tablet (caixa)</span><input class="input num" id="cf-tp" maxlength="6" inputmode="numeric" value="${esc(s.tabletPin || '')}" style="width:140px"></label><span class="muted small grow" style="align-self:flex-end">Segure o botão "Mesa" no tablet para abrir as opções. Trocar de mesa e sair do aplicativo pedem esta senha ou a da gestão.</span></div><div class="row" style="margin-bottom:14px;align-items:flex-end"><label class="row" style="gap:10px"><span class="switch"><input type="checkbox" id="cf-sl" ${(s.tabletSleep || {}).on !== false ? 'checked' : ''}><i></i></span><b>Economia de bateria</b></label><label class="field"><span>Apagar a tela depois de</span><span class="row" style="gap:6px"><input class="input num" id="cf-slm" type="number" min="1" max="60" value="${(s.tabletSleep || {}).min || 3}" style="width:80px"> minutos sem uso</span></label><span class="muted small grow">A tela fica preta com o brilho no mínimo. Um toque acende de novo, sem fazer pedido.</span></div><div class="col">${F.map(([k, t, d]) => `<label class="row" style="align-items:flex-start;gap:12px"><span class="switch"><input type="checkbox" data-ft="${k}" ${s.features[k] ? 'checked' : ''}><i></i></span><span><b>${t}</b><br><span class="muted small">${d}</span></span></label>`).join('')}</div></div>
+      <div class="grid-2"><div class="card col"><h3>Caixa</h3><label class="row"><span class="switch"><input type="checkbox" id="cf-cpin" ${s.cancelPin ? 'checked' : ''}><i></i></span> Pedir PIN de gestão para cancelar</label><label class="field"><span>Taxa de serviço padrão (%)</span><input class="input num" id="cf-fee" value="${s.serviceFeeDefault || 0}" style="width:100px"></label><label class="field"><span>Formas de pagamento (uma por linha)</span>${list('cf-pm', s.paymentMethods)}<span class="muted small">Para criar uma forma nova, escreva numa linha nova e clique em Salvar. Para tirar, apague a linha. Aparece no caixa, no fechamento e nos relatórios.</span></label></div>
         <div class="card col"><h3>Chamar garçom e pesquisa</h3><label class="field"><span>Opções rápidas do chamado (uma por linha)</span>${list('cf-wo', s.waiterOptions)}</label><label class="field"><span>Notas da pesquisa (uma por linha)</span>${list('cf-sm', s.survey.metrics)}</label><label class="field"><span>"Como nos conheceu?" (uma por linha)</span>${list('cf-ss', s.survey.sources)}</label></div></div>
       ${Store.mode === 'demo' ? `<div class="card row"><div class="grow"><h3>Demonstração</h3><p class="muted small" style="margin:4px 0 0">Apaga os pedidos de teste e volta o cardápio ao exemplo inicial.</p></div><button class="btn danger" id="cf-reset">Zerar demonstração</button></div>` : ''}`;
     const lines = id => $(id, pg).value.split('\n').map(x => x.trim()).filter(Boolean);
@@ -3358,7 +3358,7 @@ const Gestora = {
     });
     $('#cf-save', pg).onclick = async () => {
       const features = Object.assign({}, s.features); $$('[data-ft]', pg).forEach(i => features[i.dataset.ft] = i.checked);
-      const gp = $('#cf-gp', pg).value.trim(); if (!/^\d{4}$/.test(gp)) return toast('O PIN de gestora precisa ter 4 números', 'bad');
+      const gp = $('#cf-gp', pg).value.trim(); if (!/^\d{4}$/.test(gp)) return toast('O PIN de gestão precisa ter 4 números', 'bad');
       const lojas = readLojas(); if (!lojas) return;
       await Store.update('settings', 'main', { printCfg: readPc(), storeName: $('#cf-n', pg).value.trim() || s.storeName, gestoraPin: gp, tabletPin: $('#cf-tp', pg).value.trim() || s.tabletPin || '0000', tabletSleep: { on: $('#cf-sl', pg).checked, min: Math.max(1, Math.min(60, +$('#cf-slm', pg).value || 3)) }, detailedPrint: $('#cf-det', pg).checked, features, cancelPin: $('#cf-cpin', pg).checked, serviceFeeDefault: num($('#cf-fee', pg).value), paymentMethods: lines('#cf-pm'), waiterOptions: lines('#cf-wo'), survey: { metrics: lines('#cf-sm'), sources: lines('#cf-ss') }, lojas });
       toast('Configurações salvas');
@@ -3432,7 +3432,7 @@ async function barcodeSvg(code, { height = 50, fontSize = 14 } = {}) {
   return svg.outerHTML;
 }
 function printBadges(inner) {
-  const w = window.open('', '_blank'); if (!w) { toast('Abra a gestora no navegador do computador para imprimir', 'bad'); return; }
+  const w = window.open('', '_blank'); if (!w) { toast('Abra a gestão no navegador do computador para imprimir', 'bad'); return; }
   w.document.write(`<!doctype html><meta charset="utf-8"><title>Crachás</title><style>.pbar{display:flex;gap:8px;margin-bottom:8mm}.pbar button{font:700 15px Arial;padding:10px 18px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer}.pbar button:first-child{background:#1f8a4c;color:#fff;border-color:#1f8a4c}@media print{.pbar{display:none}}body{font-family:Arial,sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm}.cr{border:1px dashed #999;border-radius:4mm;padding:5mm;text-align:center;page-break-inside:avoid}.k{font-size:8pt;letter-spacing:.12em;text-transform:uppercase;color:#555;font-weight:700}.n{font-size:16pt;font-weight:800;margin:2mm 0}.cr svg{max-width:100%;height:auto}</style><div class="pbar"><button onclick="print()">Imprimir</button><button onclick="close()">Fechar</button></div><div class="g">${inner}</div>`);
   w.document.close();
 }
@@ -3444,7 +3444,8 @@ function printBadges(inner) {
 const DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
 const Equipe = {
-  /* prato do dia da equipe; se a gestora trocou a proteína hoje, vale a troca */
+  quem() { return (typeof Gestora !== 'undefined' && Gestora.quem) || 'Gestão'; },
+  /* prato do dia da equipe; se a gestão trocou a proteína hoje, vale a troca */
   menuDia(d = new Date().getDay()) {
     const st = Store.settings(), m = (st.staffMenu || {})[d] || {};
     const today = d === new Date().getDay() && st.staffToday && st.staffToday.day === dayStart() ? st.staffToday : null;
@@ -3650,8 +3651,8 @@ const Equipe = {
     $('#ce-ok', m.el).onclick = async () => {
       const at = new Date($('#ce-dt', m.el).value).getTime() || Date.now(), uso = pagar === 'voucher' ? round2(Math.min(saldo, liquido)) : 0;
       const usos = uso ? await this.usarVoucher(nome, uso) : [];
-      const r = { kind: 'consumo', at, loja, nome, tipo: this.tipoDe(nome), items: items.map(l => ({ itemId: l.itemId, name: l.name, catId: l.catId, qty: l.qty, unit: l.unit, opts: l.opts, obs: l.obs, printer: l.printer })), total, desconto: desc, liquido, voucherUsado: uso, voucherUsos: usos, voucherSaldo: round2(saldo - uso), aDescontar: round2(liquido - uso), by: 'Gestora', esquecido: true };
-      if (pagar === 'pago') r.pago = { at: Date.now(), by: 'Gestora', forma };
+      const r = { kind: 'consumo', at, loja, nome, tipo: this.tipoDe(nome), items: items.map(l => ({ itemId: l.itemId, name: l.name, catId: l.catId, qty: l.qty, unit: l.unit, opts: l.opts, obs: l.obs, printer: l.printer })), total, desconto: desc, liquido, voucherUsado: uso, voucherUsos: usos, voucherSaldo: round2(saldo - uso), aDescontar: round2(liquido - uso), by: Equipe.quem(), esquecido: true };
+      if (pagar === 'pago') r.pago = { at: Date.now(), by: Equipe.quem(), forma };
       await Store.add('equipe', r);
       const pl = this.impLer(m.el, loja); if (pl) this.imprimirNaLoja(pl, () => this.printAssinatura(r, 'CONSUMO (LANÇADO DEPOIS)'));
       m.close(); toast(`Consumo de ${nome} lançado (${fmtDT(at)})`); done && done();
@@ -3673,7 +3674,7 @@ const Equipe = {
       const d = new Date($('#re-d', m.el).value + (ref === 'Almoço' ? 'T12:00' : 'T20:00')); if (isNaN(d)) return toast('Escolha o dia', 'bad');
       const prato = $('#re-p', m.el).value.trim() || 'Prato do dia';
       const lj = Loja.of(this.pessoa(nome));
-      await Store.add('equipe', { kind: 'refeicao', at: d.getTime(), loja: lj, nome, tipo: this.tipoDe(nome), refeicao: ref, prato, itemId: null, viagem: false, obs: '', custo: num($('#re-c', m.el).value), by: 'Gestora', dia: DIAS[d.getDay()], esquecido: true });
+      await Store.add('equipe', { kind: 'refeicao', at: d.getTime(), loja: lj, nome, tipo: this.tipoDe(nome), refeicao: ref, prato, itemId: null, viagem: false, obs: '', custo: num($('#re-c', m.el).value), by: Equipe.quem(), dia: DIAS[d.getDay()], esquecido: true });
       const pl = this.impLer(m.el, lj); if (pl) this.imprimirNaLoja(pl, () => { const st = Store.settings(), w = Print.cols(Biz.physPrinter(st.contaPrinter)); Biz.print(st.contaPrinter, 'equipe', [...Print.head(ref.toUpperCase() + ' DA EQUIPE (LANÇADA DEPOIS)'), Print.hr(), { t: nome.toUpperCase(), s: 'cxl' }, { t: fmtDate(d.getTime()) + ' · ' + ref, s: 'cb' }, { t: prato, s: 'c' }, { t: '', s: 'n' }, { t: 'Confirmo que fiz esta refeição.', s: 'c' }, { t: '', s: 'n' }, { t: '', s: 'n' }, { t: '_'.repeat(Math.min(w, 36)), s: 'c' }, { t: 'Assinatura', s: 'c' }, Print.hr()]); });
       m.close(); toast(`${ref} de ${nome} lançada em ${fmtDate(d.getTime())}`); done && done();
     };
@@ -3694,10 +3695,10 @@ const Equipe = {
     $('#ad-ok', m.el).onclick = async () => {
       const valor = round2(num($('#ad-v', m.el).value)); if (!(valor > 0)) return toast('Informe o valor', 'bad');
       const at = new Date($('#ad-dt', m.el).value).getTime() || Date.now(), motivo = $('#ad-m', m.el).value.trim();
-      const r = { kind: 'consumo', adiant: true, at, loja, nome, tipo: this.tipoDe(nome), items: [{ qty: 1, name: 'Adiantamento' + (motivo ? ' · ' + motivo : ''), unit: valor, opts: [] }], total: valor, desconto: 0, liquido: valor, voucherUsado: 0, voucherUsos: [], aDescontar: valor, by: 'Gestora', forma, motivo };
+      const r = { kind: 'consumo', adiant: true, at, loja, nome, tipo: this.tipoDe(nome), items: [{ qty: 1, name: 'Adiantamento' + (motivo ? ' · ' + motivo : ''), unit: valor, opts: [] }], total: valor, desconto: 0, liquido: valor, voucherUsado: 0, voucherUsos: [], aDescontar: valor, by: Equipe.quem(), forma, motivo };
       await Store.add('equipe', r);
       const k = $('#ad-cxk', m.el);
-      if (forma === 'Dinheiro' && cx && k && k.checked) { const cur = Store.get('caixas', cx.id) || cx; await Store.update('caixas', cx.id, { movs: [...(cur.movs || []), { id: uid(), tipo: 'saida', valor, motivo: 'Adiantamento ' + nome, at: Date.now(), by: 'Gestora' }] }); }
+      if (forma === 'Dinheiro' && cx && k && k.checked) { const cur = Store.get('caixas', cx.id) || cx; await Store.update('caixas', cx.id, { movs: [...(cur.movs || []), { id: uid(), tipo: 'saida', valor, motivo: 'Adiantamento ' + nome, at: Date.now(), by: Equipe.quem() }] }); }
       const pl = this.impLer(m.el, loja); if (pl) this.imprimirNaLoja(pl, () => { const st = Store.settings(), w = Print.cols(Biz.physPrinter(st.contaPrinter)); Biz.print(st.contaPrinter, 'equipe', [...Print.head('ADIANTAMENTO'), Print.hr(), { t: nome.toUpperCase(), s: 'cxl' }, { t: brl(valor), s: 'cxl' }, { t: forma + ' · ' + fmtDT(at), s: 'c' }, ...(motivo ? [{ t: motivo, s: 'c' }] : []), { t: '', s: 'n' }, { t: 'Recebi o valor acima como adiantamento,', s: 'c' }, { t: 'a ser descontado do meu salário.', s: 'c' }, { t: '', s: 'n' }, { t: '', s: 'n' }, { t: '_'.repeat(Math.min(w, 36)), s: 'c' }, { t: 'Assinatura', s: 'c' }, Print.hr()]); });
       m.close(); toast(`Adiantamento de ${brl(valor)} para ${nome} registrado`); done && done();
     };
@@ -3718,8 +3719,8 @@ const Equipe = {
       const pi = $('#cd-p', m.el), ci = $('#cd-c', m.el), li = $('#cd-l', m.el);
       const prato = pi ? pi.value.trim() : '', custo = ci ? num(ci.value) : 0, cl = li ? num(li.value) : 0;
       let n = 0;
-      for (const r of pratos) { const patch = { corrigido: { at: Date.now(), by: 'Gestora', antes: { prato: r.prato, custo: r.custo || 0 } } }; if (prato) patch.prato = prato; if (ci && ci.value.trim()) patch.custo = custo; await Store.update('equipe', r.id, patch); n++; }
-      if (li && li.value.trim()) for (const r of lanches) { await Store.update('equipe', r.id, { custo: cl, corrigido: { at: Date.now(), by: 'Gestora', antes: { prato: r.prato, custo: r.custo || 0 } } }); n++; }
+      for (const r of pratos) { const patch = { corrigido: { at: Date.now(), by: Equipe.quem(), antes: { prato: r.prato, custo: r.custo || 0 } } }; if (prato) patch.prato = prato; if (ci && ci.value.trim()) patch.custo = custo; await Store.update('equipe', r.id, patch); n++; }
+      if (li && li.value.trim()) for (const r of lanches) { await Store.update('equipe', r.id, { custo: cl, corrigido: { at: Date.now(), by: Equipe.quem(), antes: { prato: r.prato, custo: r.custo || 0 } } }); n++; }
       const sv = $('#cd-s', m.el);
       if (sv && sv.checked && prato) { const sm = JSON.parse(JSON.stringify(Store.base().staffMenu || {})); sm[wd] = Object.assign({}, sm[wd] || {}, { proteina: prato, custo: ci && ci.value.trim() ? custo : (sm[wd] || {}).custo || 0 }); await Store.update('settings', 'main', { staffMenu: sm }); }
       m.close(); toast(`${plural(n, 'refeição atualizada', 'refeições atualizadas')}`); done && done();
@@ -3759,9 +3760,9 @@ const Equipe = {
     };
     m.el.addEventListener('click', async e => {
       const b = e.target.closest('[data-ca]'); if (!b) return; const a = b.dataset.ca, r = Store.get('equipe', id); if (!r) return;
-      if (a === 'voucher') { const saldo = this.saldoDe(r.nome), uso = round2(Math.min(saldo, r.aDescontar)); if (!uso) return toast('Sem saldo de voucher', 'bad'); const usos = await this.usarVoucher(r.nome, uso); await Store.update('equipe', id, { voucherUsado: round2((r.voucherUsado || 0) + uso), voucherUsos: [...(r.voucherUsos || []), ...usos], voucherSaldo: round2(saldo - uso), aDescontar: round2(r.aDescontar - uso), corrigido: { at: Date.now(), by: 'Gestora', acao: 'voucher' } }); toast(`${brl(uso)} saiu do voucher de ${r.nome}`); }
-      if (a === 'descontar') { await this.devolverVoucher(r); await Store.update('equipe', id, { aDescontar: round2((r.aDescontar || 0) + r.voucherUsado), voucherUsado: 0, voucherUsos: [], voucherSaldo: this.saldoDe(r.nome), corrigido: { at: Date.now(), by: 'Gestora', acao: 'descontar' } }); toast(`${brl(r.voucherUsado)} voltou para o voucher de ${r.nome}`); }
-      if (a === 'pago') { await Store.update('equipe', id, { pago: { at: Date.now(), by: 'Gestora', forma: ($('#ca-f', m.el) || {}).value || '' } }); toast('Marcado como pago'); }
+      if (a === 'voucher') { const saldo = this.saldoDe(r.nome), uso = round2(Math.min(saldo, r.aDescontar)); if (!uso) return toast('Sem saldo de voucher', 'bad'); const usos = await this.usarVoucher(r.nome, uso); await Store.update('equipe', id, { voucherUsado: round2((r.voucherUsado || 0) + uso), voucherUsos: [...(r.voucherUsos || []), ...usos], voucherSaldo: round2(saldo - uso), aDescontar: round2(r.aDescontar - uso), corrigido: { at: Date.now(), by: Equipe.quem(), acao: 'voucher' } }); toast(`${brl(uso)} saiu do voucher de ${r.nome}`); }
+      if (a === 'descontar') { await this.devolverVoucher(r); await Store.update('equipe', id, { aDescontar: round2((r.aDescontar || 0) + r.voucherUsado), voucherUsado: 0, voucherUsos: [], voucherSaldo: this.saldoDe(r.nome), corrigido: { at: Date.now(), by: Equipe.quem(), acao: 'descontar' } }); toast(`${brl(r.voucherUsado)} voltou para o voucher de ${r.nome}`); }
+      if (a === 'pago') { await Store.update('equipe', id, { pago: { at: Date.now(), by: Equipe.quem(), forma: ($('#ca-f', m.el) || {}).value || '' } }); toast('Marcado como pago'); }
       if (a === 'despagar') { await Store.update('equipe', id, { pago: null }); toast('Voltou para descontar'); }
       if (a === 'excluir') { if (!(await confirmBox(`Excluir este lançamento de ${r.nome}?${r.voucherUsado ? ` ${brl(r.voucherUsado)} volta para o voucher.` : ''}`, { ok: 'Excluir', danger: true }))) return; await this.devolverVoucher(r); await Store.del('equipe', id); toast('Lançamento excluído'); m.close(); refresh(); return; }
       draw(); refresh();
@@ -3787,7 +3788,7 @@ const Equipe = {
       w.document.write(`<!doctype html><meta charset="utf-8"><title>Relatório ${esc(nome)}</title><style>body{font-family:Arial,sans-serif;margin:12mm;color:#111}h1{font-size:20px;margin:0}h2{font-size:15px;font-weight:normal;margin:4px 0 14px;color:#444}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid #ccc;padding:5px 4px;text-align:left;vertical-align:top}.r{text-align:right;white-space:nowrap}.num{white-space:nowrap}.small{font-size:11px}.box{border:1px solid #999;border-radius:6px;padding:8px 12px;margin:0 0 14px;max-width:380px}.kv{display:flex;justify-content:space-between;gap:20px;padding:2px 0}.ass{margin-top:40px;display:flex;gap:40px}.ass div{flex:1;border-top:1px solid #333;padding-top:4px;text-align:center;font-size:12px}</style>
         <h1>${esc(Store.base().storeName || 'Xis da Gaúcha')} · Consumo de funcionário</h1><h2><b>${esc(nome)}</b> · ${esc(lbl)}${Loja.multi() ? ' · ' + esc(Loja.nome(loja)) : ''} · gerado em ${fmtDT(Date.now())}</h2>
         <div class="box">${resumo}</div><table><thead><tr><th>Data</th><th>O que pegou</th><th class="r">Valor</th><th class="r">Voucher</th><th class="r">A descontar</th><th>Lançado por</th></tr></thead><tbody>${linhas}</tbody></table>
-        <div class="ass"><div>${esc(nome)}</div><div>Gestora</div></div><script>onload=()=>setTimeout(()=>print(),300)<\/script>`);
+        <div class="ass"><div>${esc(nome)}</div><div>${esc(Equipe.quem())}</div></div><script>onload=()=>setTimeout(()=>print(),300)<\/script>`);
       w.document.close();
     };
     $('#rp-term', m.el).onclick = () => {
@@ -3860,7 +3861,7 @@ const Equipe = {
         ${c.saldo > 0 ? `<label class="opt-line" style="border-color:var(--accent)"><input type="checkbox" id="ec-v" ${usar ? 'checked' : ''}><span>Usar o voucher · saldo <b>${brl(c.saldo)}</b></span><span class="p">${usar ? '-' + brl(c.uso) : ''}</span></label>` : (c.nome ? `<p class="muted small" style="margin:0">${esc(c.nome)} não tem voucher com saldo.</p>` : '')}
         ${c.uso ? `<div class="kv"><span>Saldo do voucher depois</span><b>${brl(c.saldo - c.uso)}</b></div>` : ''}
         <div class="kv"><span>A descontar no salário</span><b style="color:var(--accent)">${brl(c.aDesc)}</b></div>
-        ${(() => { const p = c.nome && this.pessoa(c.nome); if (!p || !p.limite) return ''; const g = this.gastoDe(c.nome, mesRs), dep = round2(g + c.aDesc); return `<div class="kv"><span>No mês (limite ${brl(p.limite)})</span><b>${brl(g)} → ${brl(dep)}</b></div>${dep > p.limite ? `<div class="alert bad">${ico('pause')}<div class="grow"><b>Passa do limite do mês</b> em ${brl(dep - p.limite)}. Converse com a gestora antes de lançar.</div></div>` : ''}`; })()}`;
+        ${(() => { const p = c.nome && this.pessoa(c.nome); if (!p || !p.limite) return ''; const g = this.gastoDe(c.nome, mesRs), dep = round2(g + c.aDesc); return `<div class="kv"><span>No mês (limite ${brl(p.limite)})</span><b>${brl(g)} → ${brl(dep)}</b></div>${dep > p.limite ? `<div class="alert bad">${ico('pause')}<div class="grow"><b>Passa do limite do mês</b> em ${brl(dep - p.limite)}. Converse com a gestão antes de lançar.</div></div>` : ''}`; })()}`;
       const v = $('#ec-v', m.el); if (v) v.onchange = () => { usar = v.checked; draw(); };
     };
     const ni = $('#ec-n', m.el); ni.oninput = debounce(draw, 150); ni.onchange = draw; ni.focus(); draw();
@@ -3891,7 +3892,7 @@ const Equipe = {
     const md = this.menuDia(); const hora = new Date().getHours();
     const lanches = (md.lanches || []).map(id => Store.get('items', id)).filter(Boolean);
     const dom = this.menuDia(0), domLanches = (dom.lanches || []).map(id => Store.get('items', id)).filter(Boolean);
-    /* entregador pode trocar a comida por lanche em qualquer dia, nas lojas liberadas pela gestora */
+    /* entregador pode trocar a comida por lanche em qualquer dia, nas lojas liberadas pela gestão */
     const podeLanche = nome => !md.domingo && !!nome && this.tipoDe(nome) === 'entregador' && !!(Store.base().entregLanche || {})[Loja.w()] && domLanches.length > 0;
     let ref = hora < 16 ? 'Almoço' : 'Janta', escolha = md.domingo ? (lanches[0] && lanches[0].id) : 'prato', viagem = false, extras = [], pagar = null, forma = this.formasAgora()[0];
     const podeLevar = () => true;
@@ -4054,7 +4055,7 @@ const Equipe = {
         <p class="muted small" style="margin:0">Toque num dia para ver quem comeu e o que comeu. Se o prato ou o custo estiverem errados, use <b>Corrigir este dia</b>.</p>
         <div class="ct-list">${Object.entries(days).sort((x, y) => y[0] - x[0]).map(([k, d]) => { const open = (G.cuOpen = G.cuOpen || new Set()).has(k), ms = meals.filter(r => dayStart(r.at) === +k).sort((a, b) => a.at - b.at), pr = [...new Set(ms.filter(r => !r.itemId).map(r => r.prato))];
           return `<div class="ct-row ${open ? 'open' : ''}"><div class="ct-head" data-cu="${k}"><span class="ct-h" style="min-width:150px">${DIAS[new Date(+k).getDay()]} ${fmtDate(+k)}</span><span class="grow small">${pr.length ? esc(pr.join(' / ')) : ''}${d.ent ? ` <span class="muted">· ${d.ent} entregador${d.ent > 1 ? 'es' : ''}</span>` : ''}</span><span class="pill">${d.n} refeições</span><span class="muted small">${d.alm} almoço · ${d.jan} janta</span><b class="num ct-v">${d.custo ? brl(d.custo) : '<span style="color:var(--bad)">sem custo</span>'}</b><span class="pr-chev">${ico(open ? 'up' : 'down')}</span></div>
-          ${open ? `<div class="ct-body"><table class="t"><thead><tr><th>Hora</th><th>Nome</th><th>Refeição</th><th>O que comeu</th><th class="r">Custo</th></tr></thead><tbody>${ms.map(r => `<tr><td class="num">${fmtTime(r.at)}</td><td>${esc(r.nome)}${r.tipo === 'entregador' ? ' <span class="pill">entregador</span>' : ''}</td><td>${esc(r.refeicao || '')}</td><td>${esc(r.prato || '')}${r.itemId ? ' <span class="muted small">(lanche)</span>' : ''}${r.extras ? ` <span class="pill warn">+ ${esc(this.extrasTxt(r))}</span>` : ''}${r.viagem ? ' <span class="pill warn">levar</span>' : ''}${r.obs ? `<div class="muted small">${esc(r.obs)}</div>` : ''}${r.corrigido ? ' <span class="pill" title="corrigido pela gestora">corrigido</span>' : ''}</td><td class="r num">${r.custo ? brl(r.custo) : '<span class="muted">–</span>'}</td></tr>`).join('')}</tbody></table>
+          ${open ? `<div class="ct-body"><table class="t"><thead><tr><th>Hora</th><th>Nome</th><th>Refeição</th><th>O que comeu</th><th class="r">Custo</th></tr></thead><tbody>${ms.map(r => `<tr><td class="num">${fmtTime(r.at)}</td><td>${esc(r.nome)}${r.tipo === 'entregador' ? ' <span class="pill">entregador</span>' : ''}</td><td>${esc(r.refeicao || '')}</td><td>${esc(r.prato || '')}${r.itemId ? ' <span class="muted small">(lanche)</span>' : ''}${r.extras ? ` <span class="pill warn">+ ${esc(this.extrasTxt(r))}</span>` : ''}${r.viagem ? ' <span class="pill warn">levar</span>' : ''}${r.obs ? `<div class="muted small">${esc(r.obs)}</div>` : ''}${r.corrigido ? ' <span class="pill" title="corrigido pela gestão">corrigido</span>' : ''}</td><td class="r num">${r.custo ? brl(r.custo) : '<span class="muted">–</span>'}</td></tr>`).join('')}</tbody></table>
             <button class="btn sm primary" data-cud="${k}" style="align-self:flex-start">${ico('edit')} Corrigir este dia</button></div>` : ''}</div>`; }).join('') || '<div class="empty">Nenhuma refeição no período.</div>'}</div>
         <p class="muted small" style="margin:0">A projeção considera 26 dias de funcionamento no mês (terça a domingo).</p>`;
     } else if (G.eqTab === 'lanc') {
@@ -4063,11 +4064,11 @@ const Equipe = {
       const list = rs.filter(f);
       const tot = { adi: round2(cons.reduce((a, r) => a + (r.adiant ? this.devido(r) : 0), 0)), desc: round2(cons.reduce((a, r) => a + this.devido(r), 0)), vou: round2(cons.reduce((a, r) => a + (r.voucherUsado || 0), 0)), pago: round2(cons.reduce((a, r) => a + (r.pago ? r.aDescontar || 0 : 0), 0)) };
       G._eqCsv = [['Data', 'Nome', 'Tipo', 'Lançamento', 'Detalhe', 'Do voucher', 'A descontar', 'Pago', 'Custo', 'Lançado por'], ...list.map(r => [fmtDT(r.at), r.nome, r.tipo, r.adiant ? 'Adiantamento' : r.kind === 'consumo' ? 'Consumo' : r.refeicao, r.kind === 'consumo' ? r.items.map(l => l.qty + 'x ' + l.name).join('; ') : r.prato + (r.extras ? ' + adicional pago: ' + this.extrasTxt(r) : '') + (r.obs ? ' (' + r.obs + ')' : ''), this.val(r) ? money(r.voucherUsado || 0) : '', this.val(r) ? money(this.devido(r)) : '', r.pago ? money(r.aDescontar) : '', r.kind === 'refeicao' ? money(r.custo || 0) : '', r.by || ''])];
-      html = `<div class="row" style="justify-content:flex-end;flex-wrap:wrap"><span class="muted small grow">Esqueceram de lançar no caixa? A gestora lança aqui, com a data certa.</span><button class="btn" id="gl-con">${ico('plus')} Consumo esquecido</button><button class="btn" id="gl-ref">${ico('plus')} Refeição esquecida</button><button class="btn primary" id="gl-adi">${ico('cash')} Adiantamento</button></div>
+      html = `<div class="row" style="justify-content:flex-end;flex-wrap:wrap"><span class="muted small grow">Esqueceram de lançar no caixa? A gestão lança aqui, com a data certa.</span><button class="btn" id="gl-con">${ico('plus')} Consumo esquecido</button><button class="btn" id="gl-ref">${ico('plus')} Refeição esquecida</button><button class="btn primary" id="gl-adi">${ico('cash')} Adiantamento</button></div>
         <div class="kpis"><div class="kpi"><span class="label">A descontar</span><span class="v">${brl(tot.desc)}</span><span class="d">${lbl}${tot.adi ? ` · inclui ${brl(tot.adi)} de adiantamento` : ''}</span></div><div class="kpi"><span class="label">Pago com voucher</span><span class="v">${brl(tot.vou)}</span></div><div class="kpi"><span class="label">Já pago pelo funcionário</span><span class="v">${brl(tot.pago)}</span></div></div>
         <div class="chips">${[['', 'Tudo'], ['descontar', 'A descontar'], ['voucher', 'Voucher'], ['pago', 'Pago'], ['adiant', 'Adiantamentos']].map(([k, t]) => `<button data-sit="${k}" class="${sit === k ? 'on' : ''}">${t}</button>`).join('')}</div>
         <div class="table-wrap"><table class="t"><thead><tr><th>Data</th><th>Nome</th><th>Lançamento</th><th>Detalhe</th><th>Situação</th><th class="r">Custo</th><th>Lançado por</th><th></th></tr></thead><tbody>
-        ${list.slice(0, 400).map(r => `<tr><td class="num">${fmtDT(r.at)}</td><td>${esc(r.nome)}</td><td>${r.adiant ? '<span class="pill info">adiantamento</span>' : r.kind === 'consumo' ? '<span class="pill warn">consumo</span>' : `<span class="pill ok">${esc(r.refeicao)}</span>`}${r.esquecido ? ' <span class="pill" title="lançado depois pela gestora">pela gestora</span>' : ''}</td><td class="small">${r.kind === 'consumo' ? r.items.map(l => `${l.qty}x ${esc(l.name)}`).join(', ') : esc(r.prato) + (r.extras ? ` · <b>+ ${esc(this.extrasTxt(r))}</b>` : '') + (r.viagem ? ' · levar' : '') + (r.obs ? ` · ${esc(r.obs)}` : '')}</td><td style="white-space:nowrap">${this.situacaoHtml(r)}</td><td class="r num">${r.kind === 'refeicao' ? brl(r.custo || 0) : '–'}</td><td>${r.by ? `<span class="pill info">${esc(r.by)}</span>` : '<span class="muted">–</span>'}</td><td style="white-space:nowrap">${this.val(r) ? `<button class="btn sm" data-lc="${r.id}">Corrigir</button> ` : ''}<button class="icon-btn" data-en="${r.id}" aria-label="Corrigir nome">${ico('edit')}</button><button class="icon-btn" data-del="${r.id}" aria-label="Excluir lançamento" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Nada neste filtro.</td></tr>'}</tbody></table></div>
+        ${list.slice(0, 400).map(r => `<tr><td class="num">${fmtDT(r.at)}</td><td>${esc(r.nome)}</td><td>${r.adiant ? '<span class="pill info">adiantamento</span>' : r.kind === 'consumo' ? '<span class="pill warn">consumo</span>' : `<span class="pill ok">${esc(r.refeicao)}</span>`}${r.esquecido ? ' <span class="pill" title="lançado depois pela gestão">pela gestão</span>' : ''}</td><td class="small">${r.kind === 'consumo' ? r.items.map(l => `${l.qty}x ${esc(l.name)}`).join(', ') : esc(r.prato) + (r.extras ? ` · <b>+ ${esc(this.extrasTxt(r))}</b>` : '') + (r.viagem ? ' · levar' : '') + (r.obs ? ` · ${esc(r.obs)}` : '')}</td><td style="white-space:nowrap">${this.situacaoHtml(r)}</td><td class="r num">${r.kind === 'refeicao' ? brl(r.custo || 0) : '–'}</td><td>${r.by ? `<span class="pill info">${esc(r.by)}</span>` : '<span class="muted">–</span>'}</td><td style="white-space:nowrap">${this.val(r) ? `<button class="btn sm" data-lc="${r.id}">Corrigir</button> ` : ''}<button class="icon-btn" data-en="${r.id}" aria-label="Corrigir nome">${ico('edit')}</button><button class="icon-btn" data-del="${r.id}" aria-label="Excluir lançamento" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Nada neste filtro.</td></tr>'}</tbody></table></div>
         <p class="muted small" style="margin:0">Use "Corrigir" para trocar entre voucher e desconto, marcar que o funcionário pagou ou excluir um lançamento feito errado.</p>`;
     } else if (G.eqTab === 'cad') {
       const ps = this.pessoas(), multi = Loja.multi();
@@ -4108,11 +4109,11 @@ const Equipe = {
     const rel = $('#eq-rel', pg); if (rel) rel.onclick = () => this.relatorioPessoa(G.eqPessoa, rs, lbl);
     $$('[data-rel]', pg).forEach(x => x.onclick = () => this.relatorioPessoa(x.dataset.rel, rs, lbl));
     $$('[data-et]', pg).forEach(x => x.onclick = () => { G.eqTab = x.dataset.et; G.render(); });
-    if (G.eqTab === 'hoje') $('#eq-tr', pg).onclick = () => this.trocarHoje('Gestora');
+    if (G.eqTab === 'hoje') $('#eq-tr', pg).onclick = () => this.trocarHoje(Equipe.quem());
     if (G.eqTab === 'vouchers') { $$('[data-ve]', pg).forEach(x => x.onclick = () => { const v = Store.get('vouchers', x.dataset.ve); const m = modal({ title: 'Corrigir nome do voucher', body: `${this.nomesDatalist()}<label class="field"><span>Nome certo</span><input class="input" id="ve-n" list="eq-nomes" value="${esc(v.nome)}"></label>`, foot: '<button class="btn" data-x>Cancelar</button><button class="btn primary" id="ve-ok">Salvar</button>' }); $('#ve-ok', m.el).onclick = async () => { const n = $('#ve-n', m.el).value.trim(); if (!n) return; await Store.update('vouchers', v.id, { nome: n }); await this.salvarPessoa(n); m.close(); toast('Nome corrigido'); }; });
       $('#vc-new', pg).onclick = () => this.darVoucher('Gestora'); $('#vc-use', pg).onclick = () => this.usarVoucherGestora('Gestora'); $$('[data-vu]', pg).forEach(x => x.onclick = () => this.usarVoucherGestora('Gestora', x.dataset.vu)); $$('[data-vdel]', pg).forEach(x => x.onclick = async () => { if (await confirmBox('Excluir este voucher? O saldo some.', { ok: 'Excluir', danger: true })) Store.del('vouchers', x.dataset.vdel); }); }
     if (!noPeriod) { G.bindPeriod(pg); $('#eq-csv', pg).onclick = () => downloadCSV('consumo-equipe.csv', G._eqCsv || []); }
-    $$('[data-en]', pg).forEach(x => x.onclick = () => this.editarLancamento(x.dataset.en, 'Gestora', () => { G._memo = {}; G.render(); }));
+    $$('[data-en]', pg).forEach(x => x.onclick = () => this.editarLancamento(x.dataset.en, Equipe.quem(), () => { G._memo = {}; G.render(); }));
     $$('[data-del]', pg).forEach(x => x.onclick = async () => { const r = Store.get('equipe', x.dataset.del); if (await confirmBox(`Excluir este lançamento?${r && r.voucherUsado ? ` ${brl(r.voucherUsado)} volta para o voucher.` : ''}`, { ok: 'Excluir', danger: true })) { if (r) await this.devolverVoucher(r); await Store.del('equipe', x.dataset.del); G._memo = {}; G.render(); } });
     $$('[data-lc]', pg).forEach(x => x.onclick = () => this.corrigirLanc(x.dataset.lc, () => G.render()));
     $$('[data-sit]', pg).forEach(x => x.onclick = () => { G.eqSit = x.dataset.sit; G.render(); });
@@ -4134,7 +4135,7 @@ const Equipe = {
         if (wd !== 0 && novo) {
           const hoje = (await Store.range('equipe', 'at', dayStart(), Date.now() + 1)).filter(r => r.kind === 'refeicao' && !r.itemId && r.prato !== novo);
           if (hoje.length && await confirmBox(`Já ${hoje.length === 1 ? 'tem 1 refeição lançada' : `tem ${hoje.length} refeições lançadas`} hoje como "${[...new Set(hoje.map(r => r.prato))].join(' / ')}". Atualizar para "${novo}"${sm[wd].custo ? ` e custo ${brl(sm[wd].custo)}` : ''}?`, { ok: 'Atualizar as de hoje' })) {
-            for (const r of hoje) await Store.update('equipe', r.id, Object.assign({ prato: novo, corrigido: { at: Date.now(), by: 'Gestora', antes: { prato: r.prato, custo: r.custo || 0 } } }, sm[wd].custo ? { custo: sm[wd].custo } : {}));
+            for (const r of hoje) await Store.update('equipe', r.id, Object.assign({ prato: novo, corrigido: { at: Date.now(), by: Equipe.quem(), antes: { prato: r.prato, custo: r.custo || 0 } } }, sm[wd].custo ? { custo: sm[wd].custo } : {}));
             G._memo = {}; toast(`${plural(hoje.length, 'refeição atualizada', 'refeições atualizadas')}`);
           }
         }
@@ -4224,11 +4225,11 @@ const App = {
       if (role === 'caixa') mod.lastCalls = new Set(Store.all('calls').filter(c => c.status === 'aberto').map(c => c.id));
       mod.render();
     }
-    document.title = { tablet: 'Cardápio', caixa: 'Caixa', gestora: 'Gestora' }[role] + ' · ' + Store.settings().storeName;
+    document.title = { tablet: 'Cardápio', caixa: 'Caixa', gestora: 'Gestão' }[role] + ' · ' + Store.settings().storeName;
   },
   demoBar(role) {
     if (window.PEDIDOX_ROLE) return `<div class="demo-bar"><b>PEDIDO X</b><span>modo demonstração: falta colar a configuração do Firebase no arquivo config.js</span></div>`;
-    return `<div class="demo-bar"><b>PEDIDO X</b><span>demonstração</span><div class="seg" role="tablist">${[['tablet', 'Tablet do cliente'], ['caixa', 'Caixa'], ['gestora', 'Gestora']].map(r => `<button data-role="${r[0]}" class="${role === r[0] ? 'on' : ''}">${r[1]}</button>`).join('')}</div>${role && role !== 'gestora' && Loja.multi() ? `<label class="demo-loja">Loja <select id="demo-loja">${Loja.list().map(l => `<option value="${l.id}" ${Loja.cur() === l.id ? 'selected' : ''}>${esc(Loja.curto(l.id))}</option>`).join('')}</select></label>` : ''}<button class="reset" id="demo-reset">Zerar demonstração</button></div>`;
+    return `<div class="demo-bar"><b>PEDIDO X</b><span>demonstração</span><div class="seg" role="tablist">${[['tablet', 'Tablet do cliente'], ['caixa', 'Caixa'], ['gestora', 'Gestão']].map(r => `<button data-role="${r[0]}" class="${role === r[0] ? 'on' : ''}">${r[1]}</button>`).join('')}</div>${role && role !== 'gestora' && Loja.multi() ? `<label class="demo-loja">Loja <select id="demo-loja">${Loja.list().map(l => `<option value="${l.id}" ${Loja.cur() === l.id ? 'selected' : ''}>${esc(Loja.curto(l.id))}</option>`).join('')}</select></label>` : ''}<button class="reset" id="demo-reset">Zerar demonstração</button></div>`;
   },
   chooser(view) {
     const s = Store.settings();
@@ -4237,7 +4238,7 @@ const App = {
       <div class="opts">
         <button class="opt" data-pick="tablet">${ico('tablet')}<h3>Tablet da mesa</h3><span class="muted">Cardápio para o cliente pedir, chamar garçom e pedir a conta.</span></button>
         <button class="opt" data-pick="caixa">${ico('cash')}<h3>Caixa</h3><span class="muted">Mesas e fichas, lançar itens, receber e fechar contas.</span></button>
-        <button class="opt" data-pick="gestora">${ico('chart')}<h3>Gestora</h3><span class="muted">Relatórios, cardápio, pesquisa, equipe e configurações.</span></button></div>
+        <button class="opt" data-pick="gestora">${ico('chart')}<h3>Gestão</h3><span class="muted">Relatórios, cardápio, pesquisa, equipe e configurações.</span></button></div>
       ${Store.mode === 'demo' ? '<p class="muted small">Você está na demonstração. Use a barra no topo para alternar entre as três telas. Os dados de exemplo dos relatórios são simulados.</p>' : ''}</div>`;
     $$('[data-pick]', view).forEach(b => b.onclick = () => { lsSet('pedidox_role', b.dataset.pick); location.hash = b.dataset.pick; });
   },
