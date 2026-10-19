@@ -4194,7 +4194,7 @@ const App = {
       const st = document.createElement('style');
       st.textContent = `.mark .logo{display:block;width:74%;height:74%;background:#35b86b;-webkit-mask-image:url("${LOGO_MASK}");mask-image:url("${LOGO_MASK}");-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center}`;
       document.head.appendChild(st);
-      if (typeof LOGO_ROLE !== 'undefined') st.textContent += Object.keys(LOGO_ROLE).map(r => `html[data-app=${r}] .mark .logo{-webkit-mask-image:url("${LOGO_ROLE[r]}");mask-image:url("${LOGO_ROLE[r]}")}`).join('');
+      if (typeof LOGO_ROLE !== 'undefined') st.textContent += Object.keys(LOGO_ROLE).map(r => `html[data-app=${r}] .mark .logo{-webkit-mask-image:url("${LOGO_ROLE[r]}");mask-image:url("${LOGO_ROLE[r]}")}`).join('') + `html[data-app=caixa] .brand .mark,html[data-app=gestora] .brand .mark{background:#3fbf6a}html[data-app=caixa] .mark .logo,html[data-app=gestora] .mark .logo{background:#fff;width:80%;height:80%}`;
       let l = document.querySelector('link[rel=icon]'); if (!l) { l = document.createElement('link'); l.rel = 'icon'; document.head.appendChild(l); l.href = LOGO_FAVICON; }
     }
     root.innerHTML = '<div class="empty">Carregando…</div>';
