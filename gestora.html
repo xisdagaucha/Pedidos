@@ -2,7 +2,7 @@
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0e1310"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes">
-<link rel="manifest" href="gestora.webmanifest"><link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="gestora.webmanifest"><link rel="icon" href="icon-gestora-192.png"><link rel="apple-touch-icon" href="icon-gestora-192.png">
 <script>if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));</script>
 <title>Gestora · Xis da Gaúcha</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&family=JetBrains+Mono:wght@500;800&display=swap"><style>/* Layout: sinalização de lanchonete — grafite e verde do logo, títulos condensados como placa de chapa, números tabulares no caixa */
 :root{
@@ -3417,7 +3417,7 @@ function downloadCSV(name, rows) {
 }
 function printSheet(inner) {
   const w = window.open('', '_blank'); if (!w) { toast('Abra o sistema no navegador do computador para imprimir', 'bad'); return; }
-  w.document.write(`<!doctype html><meta charset="utf-8"><title>QR codes</title><style>body{font-family:Arial,sans-serif;margin:10mm}.qr-sheet{display:grid;grid-template-columns:repeat(4,1fr);gap:6mm}.qr-card{border:1px dashed #999;border-radius:4mm;padding:4mm;text-align:center;page-break-inside:avoid;display:flex;flex-direction:column;align-items:center;gap:1mm}.qr-card svg{width:38mm;height:38mm}.k{font-size:9pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:#444}.n{font-size:26pt;font-weight:800}</style><div class="qr-sheet">${inner}</div><script>onload=()=>print()<\/script>`);
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>QR codes</title><style>.pbar{display:flex;gap:8px;margin-bottom:8mm}.pbar button{font:700 15px Arial;padding:10px 18px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer}.pbar button:first-child{background:#1f8a4c;color:#fff;border-color:#1f8a4c}@media print{.pbar{display:none}}body{font-family:Arial,sans-serif;margin:10mm}.qr-sheet{display:grid;grid-template-columns:repeat(4,1fr);gap:6mm}.qr-card{border:1px dashed #999;border-radius:4mm;padding:4mm;text-align:center;page-break-inside:avoid;display:flex;flex-direction:column;align-items:center;gap:1mm}.qr-card svg{width:38mm;height:38mm}.k{font-size:9pt;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:#444}.n{font-size:26pt;font-weight:800}</style><div class="pbar"><button onclick="print()">Imprimir</button><button onclick="close()">Fechar</button></div><div class="qr-sheet">${inner}</div>`);
   w.document.close();
 }
 function resizeImage(file, max, q = .8) {
@@ -3433,7 +3433,7 @@ async function barcodeSvg(code, { height = 50, fontSize = 14 } = {}) {
 }
 function printBadges(inner) {
   const w = window.open('', '_blank'); if (!w) { toast('Abra a gestora no navegador do computador para imprimir', 'bad'); return; }
-  w.document.write(`<!doctype html><meta charset="utf-8"><title>Crachás</title><style>body{font-family:Arial,sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm}.cr{border:1px dashed #999;border-radius:4mm;padding:5mm;text-align:center;page-break-inside:avoid}.k{font-size:8pt;letter-spacing:.12em;text-transform:uppercase;color:#555;font-weight:700}.n{font-size:16pt;font-weight:800;margin:2mm 0}.cr svg{max-width:100%;height:auto}</style><div class="g">${inner}</div><script>onload=()=>print()<\/script>`);
+  w.document.write(`<!doctype html><meta charset="utf-8"><title>Crachás</title><style>.pbar{display:flex;gap:8px;margin-bottom:8mm}.pbar button{font:700 15px Arial;padding:10px 18px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer}.pbar button:first-child{background:#1f8a4c;color:#fff;border-color:#1f8a4c}@media print{.pbar{display:none}}body{font-family:Arial,sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm}.cr{border:1px dashed #999;border-radius:4mm;padding:5mm;text-align:center;page-break-inside:avoid}.k{font-size:8pt;letter-spacing:.12em;text-transform:uppercase;color:#555;font-weight:700}.n{font-size:16pt;font-weight:800;margin:2mm 0}.cr svg{max-width:100%;height:auto}</style><div class="pbar"><button onclick="print()">Imprimir</button><button onclick="close()">Fechar</button></div><div class="g">${inner}</div>`);
   w.document.close();
 }
 
