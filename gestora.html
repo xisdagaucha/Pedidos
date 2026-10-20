@@ -3635,6 +3635,14 @@ const Equipe = {
   dtLocal(t = Date.now()) { const d = new Date(t); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`; },
   impOpt(loja) { return `<div class="card row imp-opt" style="padding:10px 12px;gap:10px;align-items:center"><label class="row" style="gap:10px"><span class="switch"><input type="checkbox" class="io-k" checked><i></i></span><b>Imprimir no caixa para assinar?</b></label>${Loja.multi() ? `<select class="input io-l" style="width:auto;margin-left:auto">${Loja.list().map(l => `<option value="${l.id}" ${l.id === loja ? 'selected' : ''}>Caixa ${esc(Loja.curto(l.id))}</option>`).join('')}</select>` : ''}</div>`; },
   impLer(el, loja) { const k = $('.io-k', el); return k && k.checked ? (($('.io-l', el) || {}).value || loja) : null; },
+  /* pergunta em qual caixa imprimir (quando há mais de uma loja) */
+  escolherImpressora(lojaPad) {
+    if (!Loja.multi()) return Promise.resolve(lojaPad || Loja.w());
+    return new Promise(res => {
+      let r = null; const m = modal({ title: 'Imprimir em qual caixa?', body: `<div class="col" style="gap:8px">${Loja.list().map(l => `<button class="btn big ${l.id === (lojaPad || Loja.w()) ? 'primary' : ''}" data-il="${l.id}" style="justify-content:center">${ico('printer')} Caixa ${esc(Loja.nome(l.id))}</button>`).join('')}</div>`, foot: '<button class="btn" data-x>Cancelar</button>', onClose: () => res(r) });
+      m.el.addEventListener('click', e => { const b = e.target.closest('[data-il]'); if (b) { r = b.dataset.il; m.close(); } });
+    });
+  },
   imprimirNaLoja(loja, fn) { Loja._force = loja; try { fn(); } finally { Loja._force = null; } },
   async consumoEsquecido(done) {
     const nome = await this.escolherPessoa('Consumo esquecido · de quem?', 'Toque na pessoa. Depois você escolhe o que ela pegou e o dia.'); if (!nome) return;
@@ -3798,8 +3806,9 @@ const Equipe = {
         <div class="ass"><div>${esc(nome)}</div><div>${esc(Equipe.quem())}</div></div>`);
       w.document.close();
     };
-    $('#rp-term', m.el).onclick = () => {
-      Loja._force = loja;
+    $('#rp-term', m.el).onclick = async () => {
+      const lojaImp = await this.escolherImpressora((!Loja.all() && Loja.cur()) || loja); if (!lojaImp) return;
+      Loja._force = lojaImp;
       try {
         const st = Store.settings(), pr = st.contaPrinter || 'EPSON', w = Print.cols(Biz.physPrinter(pr)) || 48, h = Math.floor(w / 2);
         const L = [...Print.head('RELATÓRIO DE CONSUMO'), { t: nome.toUpperCase(), s: 'cxl' }, { t: lbl, s: 'c' }, Print.hr()];
@@ -3812,7 +3821,7 @@ const Equipe = {
         L.push({ t: '', s: 'n' }, { t: '', s: 'n' }, { t: '_'.repeat(Math.min(w, 36)), s: 'c' }, { t: 'Assinatura', s: 'c' }, { t: 'Gerado em ' + fmtDT(Date.now()), s: 'c' }, Print.hr());
         Biz.print(pr, 'equipe', L);
       } finally { Loja._force = null; }
-      toast(`Relatório enviado para a impressora${Loja.multi() ? ' de ' + Loja.curto(loja) : ''}`);
+      toast(`Relatório enviado para a impressora${Loja.multi() ? ' de ' + Loja.curto(lojaImp) : ''}`);
     };
   },
 
@@ -4107,7 +4116,7 @@ const Equipe = {
     const sal = a.tipo === 'salario';
     const m = modal({ title: `${sal ? 'Salário' : 'Adiantamento'} · ${esc(a.nome)}`, wide: true, body: `<p class="muted" style="margin:0">${fmtDT(a.at)} · ${esc(a.forma)} · por ${esc(a.by || '')}</p><div class="acerto-doc">${this.acertoHtml(a)}</div>`,
       foot: `<button class="btn danger" id="av-del">Desfazer</button><span class="grow"></span><button class="btn" data-x>Fechar</button><button class="btn" id="av-t">${ico('printer')} Impressora do caixa</button><button class="btn primary" id="av-a4">${ico('printer')} Imprimir folha</button>` });
-    $('#av-t', m.el).onclick = () => { this.imprimirNaLoja(a.loja, () => this.acertoTermica(a)); toast('Enviado para a impressora'); };
+    $('#av-t', m.el).onclick = async () => { const l = await this.escolherImpressora(a.loja); if (!l) return; this.imprimirNaLoja(l, () => this.acertoTermica(a)); toast(`Enviado para a impressora${Loja.multi() ? ' de ' + Loja.curto(l) : ''}`); };
     $('#av-a4', m.el).onclick = () => {
       const w = window.open('', '_blank'); if (!w) return toast('Abra no navegador do computador para imprimir', 'bad');
       w.document.write(`<!doctype html><meta charset="utf-8"><title>${sal ? 'Salário' : 'Adiantamento'} ${esc(a.nome)}</title><style>body{font-family:Arial,sans-serif;margin:12mm;color:#111}h1{font-size:20px;margin:0}h2{font-size:14px;font-weight:normal;margin:4px 0 10px;color:#444}table{width:100%;border-collapse:collapse;font-size:12px}td{border-bottom:1px solid #ccc;padding:5px 4px;vertical-align:top}.r{text-align:right;white-space:nowrap}.num{white-space:nowrap}.small{font-size:12px}.box{border:1px solid #999;border-radius:6px;padding:8px 12px;max-width:420px}.kv{display:flex;justify-content:space-between;gap:20px;padding:2px 0}.kv.big{font-size:16px;font-weight:bold}.muted{color:#777}.ass{margin-top:44px;display:flex;gap:40px}.ass div{flex:1;border-top:1px solid #333;padding-top:4px;text-align:center;font-size:12px}.pbar{display:flex;gap:8px;margin-bottom:8mm}.pbar button{font:700 15px Arial;padding:10px 18px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer}.pbar button:first-child{background:#1f8a4c;color:#fff;border-color:#1f8a4c}@media print{.pbar{display:none}}</style>
