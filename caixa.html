@@ -661,6 +661,9 @@ table.t td.r,table.t th.r{text-align:right;white-space:nowrap}
 .seg3 button small{font-family:var(--f-body,inherit);font-size:11px;font-weight:600;color:var(--muted)}
 .seg3 button.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 .seg3 button:disabled{opacity:.45;cursor:not-allowed}
+.acerto-doc .box{border:1px solid var(--line);border-radius:10px;padding:10px 14px;max-width:460px}
+.acerto-doc .kv.big{font-size:17px;font-weight:700}
+.acerto-doc table.t td{padding:6px 8px}
 </style>
 <script src="config.js"></script>
 <script>window.PEDIDOX_ROLE = "caixa";</script>
@@ -3540,7 +3543,8 @@ const Equipe = {
       m.close(); toast(dup ? `Juntado com ${dup.nome}` : 'Pessoa atualizada'); onDone && onDone();
     };
   },
-  pessoas() { return Store.all('pessoas').sort((a, b) => a.nome.localeCompare(b.nome)); },
+  /* quem foi desligado no DP X fica inativo e some do caixa */
+  pessoas(todas) { return Store.all('pessoas').filter(p => todas || !p.inativo).sort((a, b) => a.nome.localeCompare(b.nome)); },
   k(n) { return stripAcc(String(n || '').toLowerCase().trim()); },
   pessoa(nome) { return this.pessoas().find(p => this.k(p.nome) === this.k(nome)) || null; },
   mesIni() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); },
@@ -3739,7 +3743,7 @@ const Equipe = {
     if (!this.val(r)) return '<span class="muted">–</span>';
     const p = [];
     if (r.voucherUsado) p.push(`<span class="pill ok">voucher ${brl(r.voucherUsado)}</span>`);
-    if (r.aDescontar) p.push(r.pago ? `<span class="pill info" title="pago em ${fmtDT(r.pago.at)}">pago ${brl(r.aDescontar)}</span>` : `<span class="pill warn">descontar ${brl(r.aDescontar)}</span>`);
+    if (r.aDescontar) p.push(r.pago ? `<span class="pill info" title="${esc(r.pago.forma || 'pago')} em ${fmtDT(r.pago.at)}">${r.pago.acerto ? (/salário/.test(r.pago.forma) ? 'descontado no salário' : 'descontado no adiantamento') : 'pago'} ${brl(r.aDescontar)}</span>` : `<span class="pill warn">descontar ${brl(r.aDescontar)}</span>`);
     return p.join(' ') || '<span class="muted">R$ 0,00</span>';
   },
   async devolverVoucher(r) { for (const u of r.voucherUsos || []) { const v = Store.get('vouchers', u.id); if (v) await Store.update('vouchers', v.id, { saldo: round2(v.saldo + u.valor) }); } },
@@ -3788,10 +3792,10 @@ const Equipe = {
       foot: `<button class="btn" data-x>Fechar</button><button class="btn" id="rp-term">${ico('printer')} Impressora do caixa</button><button class="btn primary" id="rp-a4">${ico('printer')} Imprimir folha</button>` });
     $('#rp-a4', m.el).onclick = () => {
       const w = window.open('', '_blank'); if (!w) return toast('Abra no navegador do computador para imprimir', 'bad');
-      w.document.write(`<!doctype html><meta charset="utf-8"><title>Relatório ${esc(nome)}</title><style>body{font-family:Arial,sans-serif;margin:12mm;color:#111}h1{font-size:20px;margin:0}h2{font-size:15px;font-weight:normal;margin:4px 0 14px;color:#444}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid #ccc;padding:5px 4px;text-align:left;vertical-align:top}.r{text-align:right;white-space:nowrap}.num{white-space:nowrap}.small{font-size:11px}.box{border:1px solid #999;border-radius:6px;padding:8px 12px;margin:0 0 14px;max-width:380px}.kv{display:flex;justify-content:space-between;gap:20px;padding:2px 0}.ass{margin-top:40px;display:flex;gap:40px}.ass div{flex:1;border-top:1px solid #333;padding-top:4px;text-align:center;font-size:12px}</style>
-        <h1>${esc(Store.base().storeName || 'Xis da Gaúcha')} · Consumo de funcionário</h1><h2><b>${esc(nome)}</b> · ${esc(lbl)}${Loja.multi() ? ' · ' + esc(Loja.nome(loja)) : ''} · gerado em ${fmtDT(Date.now())}</h2>
+      w.document.write(`<!doctype html><meta charset="utf-8"><title>Relatório ${esc(nome)}</title><style>body{font-family:Arial,sans-serif;margin:12mm;color:#111}h1{font-size:20px;margin:0}h2{font-size:15px;font-weight:normal;margin:4px 0 14px;color:#444}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border-bottom:1px solid #ccc;padding:5px 4px;text-align:left;vertical-align:top}.r{text-align:right;white-space:nowrap}.num{white-space:nowrap}.small{font-size:11px}.box{border:1px solid #999;border-radius:6px;padding:8px 12px;margin:0 0 14px;max-width:380px}.kv{display:flex;justify-content:space-between;gap:20px;padding:2px 0}.ass{margin-top:40px;display:flex;gap:40px}.ass div{flex:1;border-top:1px solid #333;padding-top:4px;text-align:center;font-size:12px}.pbar{display:flex;gap:8px;margin-bottom:8mm}.pbar button{font:700 15px Arial;padding:10px 18px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer}.pbar button:first-child{background:#1f8a4c;color:#fff;border-color:#1f8a4c}@media print{.pbar{display:none}}</style>
+        <div class="pbar"><button onclick="print()">Imprimir</button><button onclick="close()">Fechar</button></div><h1>${esc(Store.base().storeName || 'Xis da Gaúcha')} · Consumo de funcionário</h1><h2><b>${esc(nome)}</b> · ${esc(lbl)}${Loja.multi() ? ' · ' + esc(Loja.nome(loja)) : ''} · gerado em ${fmtDT(Date.now())}</h2>
         <div class="box">${resumo}</div><table><thead><tr><th>Data</th><th>O que pegou</th><th class="r">Valor</th><th class="r">Voucher</th><th class="r">A descontar</th><th>Lançado por</th></tr></thead><tbody>${linhas}</tbody></table>
-        <div class="ass"><div>${esc(nome)}</div><div>${esc(Equipe.quem())}</div></div><script>onload=()=>setTimeout(()=>print(),300)<\/script>`);
+        <div class="ass"><div>${esc(nome)}</div><div>${esc(Equipe.quem())}</div></div>`);
       w.document.close();
     };
     $('#rp-term', m.el).onclick = () => {
@@ -3973,7 +3977,7 @@ const Equipe = {
 
   /* ---------- CAIXA: página ---------- */
   pdvPage(pg, pdv) {
-    const md = this.menuDia(); const hoje = Store.all('equipe').filter(r => r.at >= dayStart()).sort((a, b) => b.at - a.at);
+    const md = this.menuDia(); const hoje = Store.all('equipe').filter(r => r.at >= dayStart() && r.kind !== 'acerto').sort((a, b) => b.at - a.at);
     pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Equipe</h1><div class="sub">${md.dia}: <b>${md.domingo ? 'lanche à escolha' : esc(md.proteina || 'prato do dia não cadastrado')}</b>${md.trocado ? ` <span class="pill warn">trocado hoje${md.trocado.motivo ? ': ' + esc(md.trocado.motivo) : ''}</span>` : ''}</div></div><button class="btn" id="eq-troca">${ico('edit')} Trocar prato de hoje</button></div>
       <div class="grid-2"><button class="card eq-big" id="eq-ref">${ico('bag')}<b>Pedir refeição</b><span>Almoço ou janta da equipe e dos entregadores. Vai direto para a cozinha.</span></button>
         <button class="card eq-big" id="eq-con">${ico('receipt')}<b>Lançar consumo</b><span>Funcionário pegou algo para descontar. Sai via para assinar no caixa e via para a cozinha.</span></button></div>
@@ -3997,15 +4001,138 @@ const Equipe = {
   },
 
   /* ---------- GESTORA ---------- */
+  /* ---------- GESTÃO: acerto de salário (adiantamento do dia 20 e salário do 5º dia útil) ---------- */
+  descLanc(r) { return r.kind === 'consumo' ? r.items.map(l => `${l.qty}x ${l.name}`).join(', ') : `${r.refeicao || 'Refeição'} + adicional: ${this.extrasTxt(r)}`; },
+  dIn(t) { const d = new Date(t); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; },
+  dOut(v, fim) { const [y, m, d] = String(v || '').split('-').map(Number); if (!y) return 0; return fim ? new Date(y, m - 1, d, 23, 59, 59, 999).getTime() : new Date(y, m - 1, d).getTime(); },
+  periodoPadrao(tipo) {
+    const h = new Date(), y = h.getFullYear(), m = h.getMonth();
+    if (tipo === 'adiant') return [new Date(y, m, 1).getTime(), new Date(y, m, 20).getTime()];
+    const [yy, mm] = h.getDate() <= 20 ? [y, m - 1] : [y, m];
+    return [new Date(yy, mm, 21).getTime(), new Date(yy, mm + 1, 0).getTime()];
+  },
+  async acertoNovo(tipo, done) {
+    const sal = tipo === 'salario';
+    const nome = await this.escolherPessoa(sal ? 'Salário (5º dia útil) · de quem?' : 'Adiantamento (dia 20) · para quem?', sal ? 'Desconta do salário os adiantamentos e o consumo do restante do mês.' : 'Desconta do adiantamento o consumo do período.'); if (!nome) return;
+    const loja = Loja.of(this.pessoa(nome)), cx = Store.all('caixas').find(c => c.status === 'aberto' && Loja.of(c) === loja);
+    const [d0, d1] = this.periodoPadrao(tipo);
+    let forma = 'Pix', cons = [], adis = [], off = new Set();
+    const m = modal({ title: `${sal ? 'Salário' : 'Adiantamento'} · ${esc(nome)}`, wide: true, body: `
+      <div class="row" style="align-items:flex-end;flex-wrap:wrap">
+        <label class="field"><span>${sal ? 'Salário bruto (R$)' : 'Valor do adiantamento (R$)'}</span><input class="input num" id="ac-v" inputmode="decimal" placeholder="${sal ? 'opcional' : '0,00'}" style="font-size:22px;font-weight:700;width:190px"></label>
+        <label class="field"><span>Consumo de</span><input class="input" type="date" id="ac-de" value="${this.dIn(d0)}"></label>
+        <label class="field"><span>até</span><input class="input" type="date" id="ac-ate" value="${this.dIn(d1)}"></label>
+      </div>
+      <div id="ac-list" class="col" style="gap:10px"><p class="muted">Carregando…</p></div>
+      <div class="card col" id="ac-res" style="gap:6px"></div>
+      <div class="field"><span>Como foi pago</span><div class="chips" id="ac-f">${['Pix', 'Dinheiro', 'Transferência'].map(f => `<button data-af="${f}" class="${f === forma ? 'on' : ''}">${f}</button>`).join('')}</div></div>
+      <div id="ac-cx"></div>
+      ${this.impOpt(loja)}`,
+      foot: `<button class="btn" data-x>Cancelar</button><button class="btn primary" id="ac-ok">${sal ? 'Confirmar salário' : 'Registrar adiantamento'}</button>` });
+    const V = () => round2(num($('#ac-v', m.el).value));
+    const calc = () => {
+      const c = cons.filter(r => !off.has(r.id)), a = adis.filter(r => !off.has(r.id));
+      const ct = round2(c.reduce((s, r) => s + r.aDescontar, 0)), at = round2(a.reduce((s, r) => s + r.aDescontar, 0)), v = V();
+      return { c, a, ct, at, v, liq: round2(v - ct - at) };
+    };
+    const linha = (r, adi) => `<label class="row small" style="gap:8px;padding:4px 0;border-bottom:1px solid var(--line)"><input type="checkbox" data-ac="${r.id}" ${off.has(r.id) ? '' : 'checked'}><span class="num" style="width:110px">${fmtDT(r.at)}</span><span class="grow">${esc(adi ? 'Adiantamento' + (r.motivo ? ' · ' + r.motivo : '') : this.descLanc(r))}</span><b class="num">${brl(r.aDescontar)}</b></label>`;
+    const drawRes = () => {
+      const k = calc(), lbl = `${fmtDate(this.dOut($('#ac-de', m.el).value)).slice(0, 5)} a ${fmtDate(this.dOut($('#ac-ate', m.el).value)).slice(0, 5)}`;
+      $('#ac-res', m.el).innerHTML = sal
+        ? `${k.v ? `<div class="kv"><span>Salário bruto</span><b>${brl(k.v)}</b></div>` : ''}<div class="kv"><span>Adiantamentos (${k.a.length})</span><b>-${brl(k.at)}</b></div><div class="kv"><span>Consumo de ${lbl} (${k.c.length})</span><b>-${brl(k.ct)}</b></div>
+           <div class="kv" style="font-size:18px"><span><b>TOTAL DESCONTADO DO SALÁRIO</b></span><b>${brl(k.at + k.ct)}</b></div>${k.v ? `<div class="kv" style="font-size:18px"><span><b>SALÁRIO A RECEBER</b></span><b style="color:${k.liq < 0 ? 'var(--bad)' : 'var(--accent)'}">${brl(k.liq)}</b></div>` : ''}`
+        : `<div class="kv"><span>Adiantamento</span><b>${brl(k.v)}</b></div><div class="kv"><span>Consumo de ${lbl} (${k.c.length})</span><b>-${brl(k.ct)}</b></div>
+           <div class="kv" style="font-size:18px"><span><b>VALOR ENTREGUE AGORA</b></span><b style="color:${k.liq < 0 ? 'var(--bad)' : 'var(--accent)'}">${brl(k.liq)}</b></div>
+           <div class="kv"><span>Será descontado do salário</span><b>${brl(k.v)}</b></div>${k.liq < 0 ? '<p class="small" style="color:var(--bad);margin:0">O consumo passou do adiantamento.</p>' : ''}`;
+      $('#ac-cx', m.el).innerHTML = forma === 'Dinheiro' ? (cx ? `<label class="row small"><input type="checkbox" id="ac-cxk" checked> Saiu da gaveta do caixa aberto de ${esc(Loja.nome(loja))} (registra a retirada de ${brl(Math.max(0, k.liq))})</label>` : `<p class="muted small" style="margin:0">O caixa de ${esc(Loja.nome(loja))} está fechado; o dinheiro não é descontado da gaveta.</p>`) : '';
+    };
+    const drawList = () => {
+      $('#ac-list', m.el).innerHTML = (sal ? `<div class="card col" style="gap:0"><h3 style="margin:0 0 6px">Adiantamentos a descontar</h3>${adis.map(r => linha(r, true)).join('') || '<p class="muted small" style="margin:0">Nenhum adiantamento em aberto.</p>'}</div>` : '')
+        + `<div class="card col" style="gap:0"><h3 style="margin:0 0 6px">Consumo a descontar no período</h3>${cons.map(r => linha(r)).join('') || '<p class="muted small" style="margin:0">Nada a descontar nesse período.</p>'}</div>`;
+      drawRes();
+    };
+    const load = async () => {
+      const de = this.dOut($('#ac-de', m.el).value), ate = this.dOut($('#ac-ate', m.el).value, true); if (!de || !ate) return;
+      const ini = sal ? Math.min(de, new Date(new Date(ate).getFullYear(), new Date(ate).getMonth() - 1, 1).getTime()) : de;
+      const all = (await Store.range('equipe', 'at', ini, ate + 1)).filter(r => this.k(r.nome) === this.k(nome) && this.devido(r) > 0).sort((a, b) => a.at - b.at);
+      cons = all.filter(r => !r.adiant && r.at >= de); adis = sal ? all.filter(r => r.adiant) : []; drawList();
+    };
+    m.el.addEventListener('click', e => { const b = e.target.closest('[data-af]'); if (!b) return; forma = b.dataset.af; $$('[data-af]', m.el).forEach(x => x.classList.toggle('on', x === b)); drawRes(); });
+    m.el.addEventListener('change', e => { const c = e.target.closest('[data-ac]'); if (c) { c.checked ? off.delete(c.dataset.ac) : off.add(c.dataset.ac); drawRes(); } if (e.target.matches('#ac-de,#ac-ate')) load(); });
+    $('#ac-v', m.el).oninput = drawRes;
+    load(); setTimeout(() => $('#ac-v', m.el).focus(), 50);
+    $('#ac-ok', m.el).onclick = async () => {
+      const k = calc(); if (!sal && !(k.v > 0)) return toast('Informe o valor do adiantamento', 'bad');
+      if (sal && !k.c.length && !k.a.length && !k.v) return toast('Nada para acertar', 'bad');
+      const b = $('#ac-ok', m.el); b.disabled = true;
+      const now = Date.now(), by = Equipe.quem(), id = uid(), fp = sal ? 'Descontado no salário' : 'Descontado no adiantamento';
+      const a = { id, kind: 'acerto', tipo, nome, tipoPessoa: this.tipoDe(nome), loja, at: now, by, forma,
+        de: this.dOut($('#ac-de', m.el).value), ate: this.dOut($('#ac-ate', m.el).value, true), valor: k.v,
+        consumos: k.c.map(r => ({ id: r.id, loja: r.loja || loja, at: r.at, desc: this.descLanc(r), valor: r.aDescontar })), consumoTotal: k.ct,
+        adiantamentos: k.a.map(r => ({ id: r.id, loja: r.loja || loja, at: r.at, valor: r.aDescontar, motivo: r.motivo || '' })), adiantTotal: k.at, liquido: k.liq };
+      if (!sal) {
+        a.adiantId = await Store.add('equipe', { kind: 'consumo', adiant: true, at: now, loja, nome, tipo: this.tipoDe(nome), items: [{ qty: 1, name: `Adiantamento (dia 20) · consumo de ${brl(k.ct)} já descontado, entregue ${brl(k.liq)}`, unit: k.v, opts: [] }], total: k.v, desconto: 0, liquido: k.v, voucherUsado: 0, voucherUsos: [], aDescontar: k.v, by, forma, motivo: 'dia 20', acerto: id });
+      }
+      await Store.add('equipe', a);
+      for (const r of [...k.c, ...k.a]) await Store.update('equipe', r.id, { loja: r.loja || loja, pago: { at: now, by, forma: fp, acerto: id } });
+      const ck = $('#ac-cxk', m.el);
+      if (forma === 'Dinheiro' && cx && ck && ck.checked && k.liq > 0) { const cur = Store.get('caixas', cx.id) || cx; await Store.update('caixas', cx.id, { movs: [...(cur.movs || []), { id: uid(), tipo: 'saida', valor: k.liq, motivo: (sal ? 'Salário ' : 'Adiantamento ') + nome, at: now, by }] }); }
+      const pl = this.impLer(m.el, loja); if (pl) this.imprimirNaLoja(pl, () => this.acertoTermica(a));
+      m.close(); toast(sal ? `Salário de ${nome} acertado` : `Adiantamento de ${nome}: ${brl(k.liq)} entregue`); done && done();
+    };
+  },
+  acertoTermica(a) {
+    const st = Store.settings(), pr = st.contaPrinter || 'EPSON', w = Print.cols(Biz.physPrinter(pr)) || 48, h = Math.floor(w / 2), sal = a.tipo === 'salario';
+    const L = [...Print.head(sal ? 'ACERTO DE SALÁRIO' : 'ADIANTAMENTO DE SALÁRIO'), { t: a.nome.toUpperCase(), s: 'cxl' }, { t: fmtDT(a.at) + ' · ' + a.forma, s: 'c' }, Print.hr()];
+    if (sal) { if (a.valor) L.push({ t: Print.lr('Salário bruto', money(a.valor), w), s: 'n' }); L.push({ t: 'ADIANTAMENTOS', s: 'b' }); a.adiantamentos.forEach(x => L.push({ t: Print.lr(fmtDate(x.at).slice(0, 5) + ' adiantamento', '-' + money(x.valor), w), s: 'n' })); if (!a.adiantamentos.length) L.push({ t: '  nenhum', s: 'n' }); }
+    else L.push({ t: Print.lr('Adiantamento', money(a.valor), w), s: 'b' });
+    L.push({ t: `CONSUMO ${fmtDate(a.de).slice(0, 5)} A ${fmtDate(a.ate).slice(0, 5)}`, s: 'b' });
+    a.consumos.forEach(x => L.push({ t: Print.lr(fmtDate(x.at).slice(0, 5) + ' ' + x.desc, '-' + money(x.valor), w), s: 'n' })); if (!a.consumos.length) L.push({ t: '  nenhum', s: 'n' });
+    L.push(Print.hr(), { t: Print.lr('Total consumo', '-' + money(a.consumoTotal), w), s: 'n' });
+    if (sal) { L.push({ t: Print.lr('Total adiantamentos', '-' + money(a.adiantTotal), w), s: 'n' }, { t: Print.lr('DESCONTADO', brl(a.adiantTotal + a.consumoTotal), h), s: 'big' }); if (a.valor) L.push({ t: Print.lr('A RECEBER', brl(a.liquido), h), s: 'big' }); }
+    else L.push({ t: Print.lr('ENTREGUE', brl(a.liquido), h), s: 'big' }, { t: '', s: 'n' }, { t: `De ${brl(a.valor)}: ${brl(a.consumoTotal)} foi consumo`, s: 'c' }, { t: `e ${brl(a.liquido)} recebi agora.`, s: 'c' }, { t: `Os ${brl(a.valor)} serão descontados do salário.`, s: 'c' });
+    L.push({ t: '', s: 'n' }, { t: '', s: 'n' }, { t: '_'.repeat(Math.min(w, 36)), s: 'c' }, { t: 'Assinatura', s: 'c' }, Print.hr());
+    Biz.print(pr, 'equipe', L);
+  },
+  acertoHtml(a) {
+    const sal = a.tipo === 'salario', per = `${fmtDate(a.de)} a ${fmtDate(a.ate)}`;
+    const tab = (t, rows) => `<h3 style="margin:12px 0 4px;font-size:14px">${t}</h3><table class="t"><tbody>${rows || '<tr><td class="muted">Nenhum.</td></tr>'}</tbody></table>`;
+    return `${sal ? tab('Adiantamentos descontados', a.adiantamentos.map(x => `<tr><td class="num">${fmtDT(x.at)}</td><td>Adiantamento${x.motivo ? ' · ' + esc(x.motivo) : ''}</td><td class="r num">-${brl(x.valor)}</td></tr>`).join('')) : ''}
+      ${tab(`Consumo de ${per}`, a.consumos.map(x => `<tr><td class="num">${fmtDT(x.at)}</td><td>${esc(x.desc)}</td><td class="r num">-${brl(x.valor)}</td></tr>`).join(''))}
+      <div class="box" style="margin-top:12px">${sal
+        ? `${a.valor ? `<div class="kv"><span>Salário bruto</span><b>${brl(a.valor)}</b></div>` : ''}<div class="kv"><span>Adiantamentos</span><b>-${brl(a.adiantTotal)}</b></div><div class="kv"><span>Consumo (${per})</span><b>-${brl(a.consumoTotal)}</b></div><div class="kv big"><span>Total descontado do salário</span><b>${brl(a.adiantTotal + a.consumoTotal)}</b></div>${a.valor ? `<div class="kv big"><span>Salário a receber</span><b>${brl(a.liquido)}</b></div>` : ''}`
+        : `<div class="kv"><span>Adiantamento</span><b>${brl(a.valor)}</b></div><div class="kv"><span>Consumo (${per})</span><b>-${brl(a.consumoTotal)}</b></div><div class="kv big"><span>Valor entregue (${esc(a.forma)})</span><b>${brl(a.liquido)}</b></div><div class="kv"><span>Será descontado do salário</span><b>${brl(a.valor)}</b></div><p class="small" style="margin:6px 0 0">De ${brl(a.valor)}, ${brl(a.consumoTotal)} foi em consumo e ${brl(a.liquido)} foi entregue.</p>`}</div>`;
+  },
+  acertoVer(a, done) {
+    const sal = a.tipo === 'salario';
+    const m = modal({ title: `${sal ? 'Salário' : 'Adiantamento'} · ${esc(a.nome)}`, wide: true, body: `<p class="muted" style="margin:0">${fmtDT(a.at)} · ${esc(a.forma)} · por ${esc(a.by || '')}</p><div class="acerto-doc">${this.acertoHtml(a)}</div>`,
+      foot: `<button class="btn danger" id="av-del">Desfazer</button><span class="grow"></span><button class="btn" data-x>Fechar</button><button class="btn" id="av-t">${ico('printer')} Impressora do caixa</button><button class="btn primary" id="av-a4">${ico('printer')} Imprimir folha</button>` });
+    $('#av-t', m.el).onclick = () => { this.imprimirNaLoja(a.loja, () => this.acertoTermica(a)); toast('Enviado para a impressora'); };
+    $('#av-a4', m.el).onclick = () => {
+      const w = window.open('', '_blank'); if (!w) return toast('Abra no navegador do computador para imprimir', 'bad');
+      w.document.write(`<!doctype html><meta charset="utf-8"><title>${sal ? 'Salário' : 'Adiantamento'} ${esc(a.nome)}</title><style>body{font-family:Arial,sans-serif;margin:12mm;color:#111}h1{font-size:20px;margin:0}h2{font-size:14px;font-weight:normal;margin:4px 0 10px;color:#444}table{width:100%;border-collapse:collapse;font-size:12px}td{border-bottom:1px solid #ccc;padding:5px 4px;vertical-align:top}.r{text-align:right;white-space:nowrap}.num{white-space:nowrap}.small{font-size:12px}.box{border:1px solid #999;border-radius:6px;padding:8px 12px;max-width:420px}.kv{display:flex;justify-content:space-between;gap:20px;padding:2px 0}.kv.big{font-size:16px;font-weight:bold}.muted{color:#777}.ass{margin-top:44px;display:flex;gap:40px}.ass div{flex:1;border-top:1px solid #333;padding-top:4px;text-align:center;font-size:12px}.pbar{display:flex;gap:8px;margin-bottom:8mm}.pbar button{font:700 15px Arial;padding:10px 18px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer}.pbar button:first-child{background:#1f8a4c;color:#fff;border-color:#1f8a4c}@media print{.pbar{display:none}}</style>
+        <div class="pbar"><button onclick="print()">Imprimir</button><button onclick="close()">Fechar</button></div>
+        <h1>${esc(Store.base().storeName || 'Xis da Gaúcha')} · ${sal ? 'Acerto de salário' : 'Adiantamento de salário'}</h1><h2><b>${esc(a.nome)}</b> · ${fmtDT(a.at)} · ${esc(a.forma)}${Loja.multi() ? ' · ' + esc(Loja.nome(a.loja)) : ''}</h2>
+        ${this.acertoHtml(a)}<div class="ass"><div>${esc(a.nome)}</div><div>${esc(a.by || Equipe.quem())}</div></div>`);
+      w.document.close();
+    };
+    $('#av-del', m.el).onclick = async () => {
+      if (!(await confirmBox(`Desfazer este acerto de ${a.nome}? Os consumos${sal ? ' e adiantamentos' : ''} voltam a ficar "a descontar"${a.adiantId ? ' e o adiantamento é apagado' : ''}. Se saiu dinheiro da gaveta, ajuste o caixa à mão.`, { ok: 'Desfazer', danger: true }))) return;
+      for (const x of [...a.consumos, ...a.adiantamentos]) { await Store.update('equipe', x.id, { loja: x.loja || a.loja, pago: null }).catch(() => {}); }
+      if (a.adiantId) await Store.del('equipe', a.adiantId).catch(() => {});
+      await Store.del('equipe', a.id); m.close(); toast('Acerto desfeito'); done && done();
+    };
+  },
   async gestoraPage(pg, G) {
     G.eqTab = G.eqTab || 'hoje';
-    const tabs = `<div class="tabs">${[['hoje', 'Prato de hoje'], ['pessoas', 'Por pessoa'], ['lanc', 'Lançamentos'], ['vouchers', 'Vouchers'], ['custo', 'Custo com alimentação'], ['cad', 'Pessoas e limites'], ['cardapio', 'Cardápio da equipe']].map(t => `<button data-et="${t[0]}" class="${G.eqTab === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div>`;
+    const tabs = `<div class="tabs">${[['hoje', 'Prato de hoje'], ['pessoas', 'Por pessoa'], ['lanc', 'Lançamentos'], ['acertos', 'Adiantamento e salário'], ['vouchers', 'Vouchers'], ['custo', 'Custo com alimentação'], ['cad', 'Pessoas e limites'], ['cardapio', 'Cardápio da equipe']].map(t => `<button data-et="${t[0]}" class="${G.eqTab === t[0] ? 'on' : ''}">${t[1]}</button>`).join('')}</div>`;
     const [a, b, lbl] = G.periodRange();
     const noPeriod = ['cardapio', 'hoje', 'vouchers', 'cad'].includes(G.eqTab);
     let rs = ['cardapio', 'cad'].includes(G.eqTab) ? [] : G.eqTab === 'hoje' ? Store.all('equipe').filter(r => r.at >= dayStart()).sort((x, y) => y.at - x.at) : (await G.q('equipe', 'at', a, b)).sort((x, y) => y.at - x.at);
-    const mesRs = ['pessoas', 'cad'].includes(G.eqTab) ? await G.q('equipe', 'at', this.mesIni(), Date.now() + 1) : [];
+    const acertos = rs.filter(r => r.kind === 'acerto'); rs = rs.filter(r => r.kind !== 'acerto');
+    const mesRs = (['pessoas', 'cad'].includes(G.eqTab) ? await G.q('equipe', 'at', this.mesIni(), Date.now() + 1) : []).filter(r => r.kind !== 'acerto');
     /* filtro por funcionário (Por pessoa e Lançamentos) */
-    const comFiltro = ['pessoas', 'lanc'].includes(G.eqTab);
+    const comFiltro = ['pessoas', 'lanc', 'acertos'].includes(G.eqTab);
     const nomesTodos = [...new Set([...this.pessoas().map(p => p.nome), ...rs.map(r => r.nome)])].sort((x, y) => x.localeCompare(y));
     if (comFiltro && G.eqPessoa) rs = rs.filter(r => this.k(r.nome) === this.k(G.eqPessoa));
     const filtroHtml = comFiltro ? `<div class="row"><label class="field"><span>Funcionário</span><select class="input" id="eq-fp" style="min-width:220px"><option value="">Todos</option>${nomesTodos.map(n => `<option ${this.k(n) === this.k(G.eqPessoa) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>${G.eqPessoa ? `<button class="btn sm" id="eq-fpx" style="align-self:flex-end">Ver todos</button>` : ''}</div>` : '';
@@ -4065,7 +4192,7 @@ const Equipe = {
       const sit = G.eqSit || '', cons = rs.filter(r => this.val(r));
       const f = r => !sit || (sit === 'adiant' ? !!r.adiant : this.val(r) && (sit === 'descontar' ? this.devido(r) > 0 : sit === 'voucher' ? r.voucherUsado > 0 : sit === 'pago' ? !!r.pago : true));
       const list = rs.filter(f);
-      const tot = { adi: round2(cons.reduce((a, r) => a + (r.adiant ? this.devido(r) : 0), 0)), desc: round2(cons.reduce((a, r) => a + this.devido(r), 0)), vou: round2(cons.reduce((a, r) => a + (r.voucherUsado || 0), 0)), pago: round2(cons.reduce((a, r) => a + (r.pago ? r.aDescontar || 0 : 0), 0)) };
+      const tot = { adi: round2(cons.reduce((a, r) => a + (r.adiant ? this.devido(r) : 0), 0)), desc: round2(cons.reduce((a, r) => a + this.devido(r), 0)), vou: round2(cons.reduce((a, r) => a + (r.voucherUsado || 0), 0)), pago: round2(cons.reduce((a, r) => a + (r.pago && !r.pago.acerto ? r.aDescontar || 0 : 0), 0)) };
       G._eqCsv = [['Data', 'Nome', 'Tipo', 'Lançamento', 'Detalhe', 'Do voucher', 'A descontar', 'Pago', 'Custo', 'Lançado por'], ...list.map(r => [fmtDT(r.at), r.nome, r.tipo, r.adiant ? 'Adiantamento' : r.kind === 'consumo' ? 'Consumo' : r.refeicao, r.kind === 'consumo' ? r.items.map(l => l.qty + 'x ' + l.name).join('; ') : r.prato + (r.extras ? ' + adicional pago: ' + this.extrasTxt(r) : '') + (r.obs ? ' (' + r.obs + ')' : ''), this.val(r) ? money(r.voucherUsado || 0) : '', this.val(r) ? money(this.devido(r)) : '', r.pago ? money(r.aDescontar) : '', r.kind === 'refeicao' ? money(r.custo || 0) : '', r.by || ''])];
       html = `<div class="row" style="justify-content:flex-end;flex-wrap:wrap"><span class="muted small grow">Esqueceram de lançar no caixa? A gestão lança aqui, com a data certa.</span><button class="btn" id="gl-con">${ico('plus')} Consumo esquecido</button><button class="btn" id="gl-ref">${ico('plus')} Refeição esquecida</button><button class="btn primary" id="gl-adi">${ico('cash')} Adiantamento</button></div>
         <div class="kpis"><div class="kpi"><span class="label">A descontar</span><span class="v">${brl(tot.desc)}</span><span class="d">${lbl}${tot.adi ? ` · inclui ${brl(tot.adi)} de adiantamento` : ''}</span></div><div class="kpi"><span class="label">Pago com voucher</span><span class="v">${brl(tot.vou)}</span></div><div class="kpi"><span class="label">Já pago pelo funcionário</span><span class="v">${brl(tot.pago)}</span></div></div>
@@ -4073,8 +4200,14 @@ const Equipe = {
         <div class="table-wrap"><table class="t"><thead><tr><th>Data</th><th>Nome</th><th>Lançamento</th><th>Detalhe</th><th>Situação</th><th class="r">Custo</th><th>Lançado por</th><th></th></tr></thead><tbody>
         ${list.slice(0, 400).map(r => `<tr><td class="num">${fmtDT(r.at)}</td><td>${esc(r.nome)}</td><td>${r.adiant ? '<span class="pill info">adiantamento</span>' : r.kind === 'consumo' ? '<span class="pill warn">consumo</span>' : `<span class="pill ok">${esc(r.refeicao)}</span>`}${r.esquecido ? ' <span class="pill" title="lançado depois pela gestão">pela gestão</span>' : ''}</td><td class="small">${r.kind === 'consumo' ? r.items.map(l => `${l.qty}x ${esc(l.name)}`).join(', ') : esc(r.prato) + (r.extras ? ` · <b>+ ${esc(this.extrasTxt(r))}</b>` : '') + (r.viagem ? ' · levar' : '') + (r.obs ? ` · ${esc(r.obs)}` : '')}</td><td style="white-space:nowrap">${this.situacaoHtml(r)}</td><td class="r num">${r.kind === 'refeicao' ? brl(r.custo || 0) : '–'}</td><td>${r.by ? `<span class="pill info">${esc(r.by)}</span>` : '<span class="muted">–</span>'}</td><td style="white-space:nowrap">${this.val(r) ? `<button class="btn sm" data-lc="${r.id}">Corrigir</button> ` : ''}<button class="icon-btn" data-en="${r.id}" aria-label="Corrigir nome">${ico('edit')}</button><button class="icon-btn" data-del="${r.id}" aria-label="Excluir lançamento" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Nada neste filtro.</td></tr>'}</tbody></table></div>
         <p class="muted small" style="margin:0">Use "Corrigir" para trocar entre voucher e desconto, marcar que o funcionário pagou ou excluir um lançamento feito errado.</p>`;
+    } else if (G.eqTab === 'acertos') {
+      const ls = acertos.filter(a => !G.eqPessoa || this.k(a.nome) === this.k(G.eqPessoa));
+      html = `<div class="row" style="flex-wrap:wrap;gap:10px"><p class="muted grow" style="margin:0;min-width:260px"><b>Dia 20:</b> o consumo do dia 1 ao 20 sai do adiantamento e o valor cheio do adiantamento fica para descontar do salário. <b>5º dia útil:</b> desconta do salário os adiantamentos e o consumo do restante do mês.</p><button class="btn" id="ac-adi">${ico('cash')} Adiantamento (dia 20)</button><button class="btn primary" id="ac-sal">${ico('cash')} Salário (5º dia útil)</button></div>
+        <div class="table-wrap"><table class="t"><thead><tr><th>Data</th><th>Nome</th><th>Tipo</th><th class="r">Valor</th><th class="r">Consumo descontado</th><th class="r">Adiantamentos</th><th class="r">Entregue / a receber</th><th></th></tr></thead><tbody>
+        ${ls.map(a => `<tr><td class="num">${fmtDT(a.at)}</td><td>${esc(a.nome)}</td><td>${a.tipo === 'salario' ? '<span class="pill ok">salário</span>' : '<span class="pill info">adiantamento</span>'}</td><td class="r num">${a.valor ? brl(a.valor) : '–'}</td><td class="r num">${brl(a.consumoTotal)} <span class="muted small">(${a.consumos.length})</span></td><td class="r num">${a.tipo === 'salario' ? brl(a.adiantTotal) : '–'}</td><td class="r num"><b>${a.tipo === 'salario' && !a.valor ? '–' : brl(a.liquido)}</b></td><td class="r"><button class="btn sm" data-acv="${a.id}">Ver detalhes</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Nenhum acerto no período.</td></tr>'}
+        </tbody></table></div>`;
     } else if (G.eqTab === 'cad') {
-      const ps = this.pessoas(), multi = Loja.multi();
+      const ps = this.pessoas(true), multi = Loja.multi();
       html = `<p class="muted" style="margin:0">Cadastre quem trabalha em cada loja. O limite é quanto a pessoa pode consumir por mês (valor a descontar). Quando passar, o caixa avisa antes de lançar.</p>
         <div class="card col"><h3>Nova pessoa</h3><div class="row" style="align-items:flex-end"><label class="field grow"><span>Nome</span><input class="input" id="eq-np" placeholder="Ex.: Fabiana"></label>
           <label class="field"><span>Tipo</span><select class="input" id="eq-nt"><option value="funcionario">Funcionário</option><option value="entregador">Entregador</option></select></label>
@@ -4082,7 +4215,7 @@ const Equipe = {
           <label class="field"><span>Limite por mês (R$)</span><input class="input num" id="eq-nlim" inputmode="decimal" placeholder="sem limite" style="width:140px"></label>
           <button class="btn primary" id="eq-add">${ico('plus')} Adicionar</button></div></div>
         <div class="table-wrap"><table class="t"><thead><tr><th>Nome</th><th>Tipo</th>${multi ? '<th>Loja</th>' : ''}<th>Limite por mês</th><th>Consumo neste mês</th><th></th></tr></thead><tbody>
-        ${ps.map(p => `<tr><td><b>${esc(p.nome)}</b></td><td><select class="input" data-pt="${p.id}" style="width:auto"><option value="funcionario">Funcionário</option><option value="entregador" ${p.tipo === 'entregador' ? 'selected' : ''}>Entregador</option></select></td>
+        ${ps.map(p => `<tr${p.inativo ? ' style="opacity:.55"' : ''}><td><b>${esc(p.nome)}</b>${p.inativo ? ' <span class="pill bad" title="Desligado no DP X">desligado</span>' : ''}</td><td><select class="input" data-pt="${p.id}" style="width:auto"><option value="funcionario">Funcionário</option><option value="entregador" ${p.tipo === 'entregador' ? 'selected' : ''}>Entregador</option></select></td>
           ${multi ? `<td><select class="input" data-pl="${p.id}" style="width:auto">${Loja.list().map(l => `<option value="${l.id}" ${Loja.of(p) === l.id ? 'selected' : ''}>${esc(Loja.curto(l.id))}</option>`).join('')}</select></td>` : ''}
           <td><input class="input num" data-plim="${p.id}" inputmode="decimal" value="${p.limite ? money(p.limite) : ''}" placeholder="sem limite" style="width:120px"></td>
           <td style="min-width:200px">${this.limiteHtml(this.gastoDe(p.nome, mesRs), p.limite)}</td>
@@ -4123,6 +4256,7 @@ const Equipe = {
     const re = () => { G._memo = {}; G.render(); };
     $$('[data-cu]', pg).forEach(x => x.onclick = () => { const k = x.dataset.cu, o = (G.cuOpen = G.cuOpen || new Set()); o.has(k) ? o.delete(k) : o.add(k); G.render(); });
     $$('[data-cud]', pg).forEach(x => x.onclick = () => this.corrigirDia(+x.dataset.cud, rs.filter(r => r.kind === 'refeicao' && dayStart(r.at) === +x.dataset.cud), re));
+    if ($('#ac-adi', pg)) { $('#ac-adi', pg).onclick = () => this.acertoNovo('adiant', re); $('#ac-sal', pg).onclick = () => this.acertoNovo('salario', re); $$('[data-acv]', pg).forEach(x => x.onclick = () => this.acertoVer(acertos.find(a => a.id === x.dataset.acv), re)); }
     if ($('#gl-con', pg)) { $('#gl-con', pg).onclick = () => this.consumoEsquecido(re); $('#gl-ref', pg).onclick = () => this.refeicaoEsquecida(re); $('#gl-adi', pg).onclick = () => this.adiantamento(re); }
     if (G.eqTab === 'cardapio') {
       $('#eq-save', pg).onclick = async () => {
