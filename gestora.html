@@ -1026,7 +1026,7 @@ const Loja = {
   curto(id) { return String(this.nome(id)).split(/\s*·\s*/)[0]; },
   /* chave da trava da comanda: Barreiros mantém só o número (compatível com o que já existe) */
   ck(n, loja) { loja = loja || this.w(); return loja === 'barreiros' ? String(n) : loja + '-' + n; },
-  match(d) { const c = this.cur(); return c === '*' || this.of(d) === c; },
+  match(d) { const c = this.cur(); return c === '*' || this.of(d) === c || (Array.isArray(d.lojas) && d.lojas.includes(c)); },
 };
 
 /* ======================= DADOS ======================= */
@@ -3479,7 +3479,7 @@ const Equipe = {
   },
   regrasHtml() { return `<div class="alert"><div><b>Regras da janta:</b> não é permitido levar a janta · não é permitido trocar a janta · só para quem consome no intervalo.</div></div>`; },
   /* vouchers (bonificação por não atrasar/faltar): saldo por pessoa */
-  vouchersDe(nome) { const k = stripAcc(String(nome).toLowerCase()); return Store.all('vouchers').filter(v => stripAcc(v.nome.toLowerCase()) === k && v.saldo > 0.004).sort((a, b) => a.at - b.at); },
+  vouchersDe(nome) { const k = stripAcc(String(nome).toLowerCase()); return Store.allLojas('vouchers').filter(v => stripAcc(v.nome.toLowerCase()) === k && v.saldo > 0.004).sort((a, b) => a.at - b.at); },
   saldoDe(nome) { return round2(this.vouchersDe(nome).reduce((a, v) => a + v.saldo, 0)); },
   async usarVoucher(nome, valor) {
     let falta = round2(valor); const usos = [];
@@ -3527,18 +3527,18 @@ const Equipe = {
   editarPessoa(id, onDone) {
     const p = Store.get('pessoas', id); if (!p) return;
     const k = stripAcc(p.nome.toLowerCase());
-    const nl = Store.all('equipe').filter(r => stripAcc(r.nome.toLowerCase()) === k).length, nv = Store.all('vouchers').filter(v => stripAcc(v.nome.toLowerCase()) === k).length;
+    const nl = Store.allLojas('equipe').filter(r => stripAcc(r.nome.toLowerCase()) === k).length, nv = Store.allLojas('vouchers').filter(v => stripAcc(v.nome.toLowerCase()) === k).length;
     const m = modal({ title: 'Editar pessoa', body: `<label class="field"><span>Nome</span><input class="input" id="pp-n" value="${esc(p.nome)}"></label>
       <label class="field"><span>Tipo</span><select class="input" id="pp-t"><option value="funcionario">Funcionário</option><option value="entregador" ${p.tipo === 'entregador' ? 'selected' : ''}>Entregador</option></select></label>
-      ${nl || nv ? `<label class="row small"><input type="checkbox" id="pp-all" checked> Corrigir também ${[nl ? plural(nl, 'lançamento') : '', nv ? plural(nv, 'voucher') : ''].filter(Boolean).join(' e ')} com o nome antigo</label>` : ''}`,
+      <label class="row small"><input type="checkbox" id="pp-all" checked> Corrigir também todos os lançamentos e vouchers com o nome antigo (todas as lojas)</label>`,
       foot: `<button class="btn" data-x>Cancelar</button><button class="btn primary" id="pp-ok">Salvar</button>` });
     $('#pp-ok', m.el).onclick = async () => {
       const nome = $('#pp-n', m.el).value.trim(), tipo = $('#pp-t', m.el).value; if (!nome) return toast('Informe o nome', 'bad');
       const dup = this.pessoas().find(x => x.id !== p.id && stripAcc(x.nome.toLowerCase()) === stripAcc(nome.toLowerCase()));
       if (dup) { await Store.del('pessoas', p.id); await Store.update('pessoas', dup.id, { tipo }); } else await Store.update('pessoas', p.id, { nome, tipo });
       if ($('#pp-all', m.el)?.checked) {
-        for (const r of Store.all('equipe').filter(r => stripAcc(r.nome.toLowerCase()) === k)) await Store.update('equipe', r.id, { nome, tipo });
-        for (const v of Store.all('vouchers').filter(v => stripAcc(v.nome.toLowerCase()) === k)) await Store.update('vouchers', v.id, { nome });
+        for (const r of await this.todosRegistros(p.nome)) await Store.update('equipe', r.id, { nome, tipo, loja: r.loja || Loja.of(r) });
+        for (const v of Store.allLojas('vouchers').filter(v => stripAcc(v.nome.toLowerCase()) === k)) await Store.update('vouchers', v.id, { nome, loja: v.loja || Loja.of(v) });
       }
       m.close(); toast(dup ? `Juntado com ${dup.nome}` : 'Pessoa atualizada'); onDone && onDone();
     };
@@ -3827,7 +3827,7 @@ const Equipe = {
 
   /* ---------- GESTORA: lançar os itens que a pessoa pegou e descontar do voucher ---------- */
   async usarVoucherGestora(by, nomeIni) {
-    const comSaldo = {}; Store.all('vouchers').filter(v => v.saldo > 0.004).forEach(v => comSaldo[v.nome] = round2((comSaldo[v.nome] || 0) + v.saldo));
+    const comSaldo = {}; Store.allLojas('vouchers').filter(v => v.saldo > 0.004).forEach(v => comSaldo[v.nome] = round2((comSaldo[v.nome] || 0) + v.saldo));
     const nomes = Object.keys(comSaldo).sort((a, b) => a.localeCompare(b));
     if (!nomes.length) return toast('Ninguém tem voucher com saldo', 'bad');
     const nome = nomeIni && comSaldo[nomeIni] ? nomeIni : await new Promise(res => {
@@ -3981,7 +3981,38 @@ const Equipe = {
   },
   async salvarPessoa(nome) {
     if (this.pessoas().some(p => stripAcc(p.nome.toLowerCase()) === stripAcc(nome.toLowerCase()))) return;
+    /* trabalha nas duas lojas: se já existe na outra loja, libera também nesta em vez de criar outra pessoa */
+    const outra = Store.allLojas('pessoas').find(p => this.k(p.nome) === this.k(nome));
+    if (outra) { const lojas = [...new Set([...(outra.lojas || []), Loja.of(outra), Loja.w()])]; await Store.update('pessoas', outra.id, { loja: Loja.of(outra), lojas }); return; }
     await Store.add('pessoas', { nome, tipo: /entreg|motoboy/i.test(nome) ? 'entregador' : 'funcionario' });
+  },
+  /* todos os lançamentos (histórico inteiro, todas as lojas) de um nome */
+  async todosRegistros(nome) {
+    const k = this.k(nome);
+    const all = Store.mode === 'demo' ? Store.allLojas('equipe') : (await Store.db.collection('equipe').get()).docs.map(d => Object.assign({ id: d.id }, d.data()));
+    return all.filter(r => this.k(r.nome) === k);
+  },
+  /* junta duas pessoas: lançamentos e vouchers passam para o nome certo; fica liberada nas lojas das duas */
+  async juntarPessoas(srcId, dstId) {
+    const a = Store.allLojas('pessoas').find(p => p.id === srcId), b = Store.allLojas('pessoas').find(p => p.id === dstId); if (!a || !b || a.id === b.id) return 0;
+    const regs = await this.todosRegistros(a.nome);
+    for (const r of regs) await Store.update('equipe', r.id, { nome: b.nome, tipo: b.tipo || r.tipo, loja: r.loja || Loja.of(r) });
+    const vs = Store.allLojas('vouchers').filter(v => this.k(v.nome) === this.k(a.nome));
+    for (const v of vs) await Store.update('vouchers', v.id, { nome: b.nome, loja: v.loja || Loja.of(v) });
+    const lojas = [...new Set([...(a.lojas || []), Loja.of(a), ...(b.lojas || []), Loja.of(b)])];
+    await Store.update('pessoas', b.id, { loja: Loja.of(b), lojas: lojas.length > 1 ? lojas : [], limite: b.limite || a.limite || 0 });
+    await Store.del('pessoas', a.id);
+    return regs.length + vs.length;
+  },
+  /* possíveis nomes duplicados: mesmo nome, ou um nome é o começo do outro (Leo / Leonardo) */
+  duplicados() {
+    const ps = Store.allLojas('pessoas').filter(p => !p.inativo), out = [], ign = new Set(Store.settings().dupIgnorados || []);
+    const parece = (x, y) => { if (x === y) return true; const sx = !x.includes(' '), sy = !y.includes(' '), fx = x.split(' ')[0], fy = y.split(' ')[0]; return (sx && x.length >= 3 && fy.startsWith(x)) || (sy && y.length >= 3 && fx.startsWith(y)); };
+    for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+      const par = [ps[i].id, ps[j].id].sort().join('|'); if (ign.has(par)) continue;
+      if (parece(this.k(ps[i].nome), this.k(ps[j].nome))) out.push([ps[i], ps[j]]);
+    }
+    return out;
   },
 
   /* ---------- CAIXA: página ---------- */
@@ -3990,7 +4021,7 @@ const Equipe = {
     pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Equipe</h1><div class="sub">${md.dia}: <b>${md.domingo ? 'lanche à escolha' : esc(md.proteina || 'prato do dia não cadastrado')}</b>${md.trocado ? ` <span class="pill warn">trocado hoje${md.trocado.motivo ? ': ' + esc(md.trocado.motivo) : ''}</span>` : ''}</div></div><button class="btn" id="eq-troca">${ico('edit')} Trocar prato de hoje</button></div>
       <div class="grid-2"><button class="card eq-big" id="eq-ref">${ico('bag')}<b>Pedir refeição</b><span>Almoço ou janta da equipe e dos entregadores. Vai direto para a cozinha.</span></button>
         <button class="card eq-big" id="eq-con">${ico('receipt')}<b>Lançar consumo</b><span>Funcionário pegou algo para descontar. Sai via para assinar no caixa e via para a cozinha.</span></button></div>
-      ${(() => { const by = {}; Store.all('vouchers').filter(v => v.saldo > 0.004).forEach(v => by[v.nome] = round2((by[v.nome] || 0) + v.saldo)); const l = Object.entries(by).sort((a, b) => a[0].localeCompare(b[0])); return l.length ? `<div class="card"><span class="label">Vouchers com saldo</span><div class="chips" style="margin-top:8px">${l.map(([n, v]) => `<span class="pill ok" style="font-size:14px;padding:5px 12px">${esc(n)} · ${brl(v)}</span>`).join('')}</div></div>` : ''; })()}
+      ${(() => { const by = {}; Store.allLojas('vouchers').filter(v => v.saldo > 0.004).forEach(v => by[v.nome] = round2((by[v.nome] || 0) + v.saldo)); const l = Object.entries(by).sort((a, b) => a[0].localeCompare(b[0])); return l.length ? `<div class="card"><span class="label">Vouchers com saldo</span><div class="chips" style="margin-top:8px">${l.map(([n, v]) => `<span class="pill ok" style="font-size:14px;padding:5px 12px">${esc(n)} · ${brl(v)}</span>`).join('')}</div></div>` : ''; })()}
       <h3>Lançados hoje</h3>
       <div class="table-wrap"><table class="t"><thead><tr><th>Hora</th><th>Nome</th><th>Tipo</th><th>O quê</th><th class="r">Valor</th><th>Lançado por</th><th></th></tr></thead><tbody>
       ${hoje.map(r => `<tr><td class="num">${fmtTime(r.at)}</td><td><b>${esc(r.nome)}</b>${r.tipo === 'entregador' ? ' <span class="pill">entregador</span>' : ''}</td><td>${r.adiant ? '<span class="pill info">adiantamento</span>' : r.kind === 'consumo' ? '<span class="pill warn">a descontar</span>' : `<span class="pill ok">${esc(r.refeicao)}</span>`}</td>
@@ -4164,7 +4195,7 @@ const Equipe = {
         ${usos.slice(0, 100).map(r => `<tr><td class="num">${fmtDT(r.at)}</td><td>${esc(r.nome)}</td><td class="small">${r.items.map(l => `${l.qty}x ${esc(l.name)}`).join(', ')}</td><td class="r num">${brl(r.voucherUsado)}</td><td class="r num">${brl(r.voucherSaldo)}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">Nenhum uso ainda.</td></tr>'}</tbody></table></div>`;
     } else if (G.eqTab === 'pessoas') {
       const by = {};
-      rs.forEach(r => { const p = by[r.nome] = by[r.nome] || { nome: r.nome, tipo: r.tipo, desc: 0, vou: 0, pago: 0, n: 0, ref: 0, custo: 0, itens: {} }; if (r.kind === 'consumo') { p.desc = round2(p.desc + this.devido(r)); if (r.pago) { if (r.pago.acerto) p.quit = round2((p.quit || 0) + (r.aDescontar || 0)); else p.pago = round2(p.pago + (r.aDescontar || 0)); } p.vou = round2(p.vou + (r.voucherUsado || 0)); p.n++; r.items.forEach(l => p.itens[l.name] = (p.itens[l.name] || 0) + l.qty); } else { p.ref++; p.custo = round2(p.custo + (r.custo || 0)); if (r.extraTotal) { p.desc = round2(p.desc + this.devido(r)); if (r.pago) { if (r.pago.acerto) p.quit = round2((p.quit || 0) + (r.aDescontar || 0)); else p.pago = round2(p.pago + (r.aDescontar || 0)); } p.vou = round2(p.vou + (r.voucherUsado || 0)); (r.extras || []).forEach(e => p.itens['Adicional: ' + e.name] = (p.itens['Adicional: ' + e.name] || 0) + e.qty); } } });
+      rs.forEach(r => { const kk = this.k(r.nome), cad = this.pessoa(r.nome); const p = by[kk] = by[kk] || { nome: cad ? cad.nome : r.nome, tipo: r.tipo, desc: 0, vou: 0, pago: 0, n: 0, ref: 0, custo: 0, itens: {} }; if (r.kind === 'consumo') { p.desc = round2(p.desc + this.devido(r)); if (r.pago) { if (r.pago.acerto) p.quit = round2((p.quit || 0) + (r.aDescontar || 0)); else p.pago = round2(p.pago + (r.aDescontar || 0)); } p.vou = round2(p.vou + (r.voucherUsado || 0)); p.n++; r.items.forEach(l => p.itens[l.name] = (p.itens[l.name] || 0) + l.qty); } else { p.ref++; p.custo = round2(p.custo + (r.custo || 0)); if (r.extraTotal) { p.desc = round2(p.desc + this.devido(r)); if (r.pago) { if (r.pago.acerto) p.quit = round2((p.quit || 0) + (r.aDescontar || 0)); else p.pago = round2(p.pago + (r.aDescontar || 0)); } p.vou = round2(p.vou + (r.voucherUsado || 0)); (r.extras || []).forEach(e => p.itens['Adicional: ' + e.name] = (p.itens['Adicional: ' + e.name] || 0) + e.qty); } } });
       const list = Object.values(by).sort((x, y) => y.desc - x.desc || y.ref - x.ref);
       if (G.eqPessoa) {
         const p0 = list[0] || { desc: 0, vou: 0, ref: 0, custo: 0, n: 0 }, pp = this.pessoa(G.eqPessoa), dias = {};
@@ -4221,8 +4252,8 @@ const Equipe = {
         ${ls.map(a => `<tr><td class="num">${fmtDT(a.at)}</td><td>${esc(a.nome)}</td><td>${a.tipo === 'salario' ? '<span class="pill ok">salário</span>' : '<span class="pill info">adiantamento</span>'}</td><td class="r num">${a.valor ? brl(a.valor) : '–'}</td><td class="r num">${brl(a.consumoTotal)} <span class="muted small">(${a.consumos.length})</span></td><td class="r num">${a.tipo === 'salario' ? brl(a.adiantTotal) : '–'}</td><td class="r num"><b>${a.tipo === 'salario' && !a.valor ? '–' : brl(a.liquido)}</b></td><td class="r"><button class="btn sm" data-acv="${a.id}">Ver detalhes</button></td></tr>`).join('') || '<tr><td colspan="8" class="empty">Nenhum acerto no período.</td></tr>'}
         </tbody></table></div>`;
     } else if (G.eqTab === 'cad') {
-      const ps = this.pessoas(true), multi = Loja.multi();
-      html = `<p class="muted" style="margin:0">Cadastre quem trabalha em cada loja. O limite é quanto a pessoa pode consumir por mês (valor a descontar). Quando passar, o caixa avisa antes de lançar.</p>
+      const ps = this.pessoas(true), multi = Loja.multi(), dups = this.duplicados();
+      html = `${dups.length ? `<div class="alert"><div class="grow"><b>Possíveis nomes duplicados</b> (a mesma pessoa cadastrada duas vezes faz o consumo não somar):<div class="col" style="gap:6px;margin-top:8px">${dups.map(([a, b], i) => `<div class="row"><span class="grow">${esc(a.nome)} <span class="muted small">(${esc(Loja.curto(Loja.of(a)))})</span> e ${esc(b.nome)} <span class="muted small">(${esc(Loja.curto(Loja.of(b)))})</span></span><button class="btn sm" data-dn="${i}">Não é a mesma</button><button class="btn sm primary" data-dj="${i}">Juntar</button></div>`).join('')}</div></div></div>` : ''}<p class="muted" style="margin:0">Cadastre quem trabalha em cada loja. Quem trabalha nas duas, escolha "As duas lojas": aparece no caixa de São José e da Palhoça e o consumo soma junto. O limite é quanto a pessoa pode consumir por mês (valor a descontar). Quando passar, o caixa avisa antes de lançar.</p>
         <div class="card col"><h3>Nova pessoa</h3><div class="row" style="align-items:flex-end"><label class="field grow"><span>Nome</span><input class="input" id="eq-np" placeholder="Ex.: Fabiana"></label>
           <label class="field"><span>Tipo</span><select class="input" id="eq-nt"><option value="funcionario">Funcionário</option><option value="entregador">Entregador</option></select></label>
           ${multi ? `<label class="field"><span>Loja</span><select class="input" id="eq-nl">${Loja.list().map(l => `<option value="${l.id}" ${l.id === Loja.w() ? 'selected' : ''}>${esc(Loja.curto(l.id))}</option>`).join('')}</select></label>` : ''}
@@ -4230,10 +4261,10 @@ const Equipe = {
           <button class="btn primary" id="eq-add">${ico('plus')} Adicionar</button></div></div>
         <div class="table-wrap"><table class="t"><thead><tr><th>Nome</th><th>Tipo</th>${multi ? '<th>Loja</th>' : ''}<th>Limite por mês</th><th>Consumo neste mês</th><th></th></tr></thead><tbody>
         ${ps.map(p => `<tr${p.inativo ? ' style="opacity:.55"' : ''}><td><b>${esc(p.nome)}</b>${p.inativo ? ' <span class="pill bad" title="Desligado no DP X">desligado</span>' : ''}</td><td><select class="input" data-pt="${p.id}" style="width:auto"><option value="funcionario">Funcionário</option><option value="entregador" ${p.tipo === 'entregador' ? 'selected' : ''}>Entregador</option></select></td>
-          ${multi ? `<td><select class="input" data-pl="${p.id}" style="width:auto">${Loja.list().map(l => `<option value="${l.id}" ${Loja.of(p) === l.id ? 'selected' : ''}>${esc(Loja.curto(l.id))}</option>`).join('')}</select></td>` : ''}
+          ${multi ? `<td><select class="input" data-pl="${p.id}" style="width:auto">${Loja.list().map(l => `<option value="${l.id}" ${(p.lojas || []).length < 2 && Loja.of(p) === l.id ? 'selected' : ''}>${esc(Loja.curto(l.id))}</option>`).join('')}<option value="ambas" ${(p.lojas || []).length > 1 ? 'selected' : ''}>As duas lojas</option></select></td>` : ''}
           <td><input class="input num" data-plim="${p.id}" inputmode="decimal" value="${p.limite ? money(p.limite) : ''}" placeholder="sem limite" style="width:120px"></td>
           <td style="min-width:200px">${this.limiteHtml(this.gastoDe(p.nome, mesRs), p.limite)}</td>
-          <td style="white-space:nowrap"><button class="icon-btn" data-pe="${p.id}" aria-label="Editar nome">${ico('edit')}</button><button class="icon-btn" data-pdel="${p.id}" aria-label="Remover" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('') || `<tr><td colspan="${multi ? 6 : 5}" class="empty">Ninguém cadastrado ainda.</td></tr>`}</tbody></table></div>
+          <td style="white-space:nowrap"><button class="btn sm" data-pj="${p.id}" title="Juntar com outro nome (é a mesma pessoa)">Juntar</button><button class="icon-btn" data-pe="${p.id}" aria-label="Editar nome">${ico('edit')}</button><button class="icon-btn" data-pdel="${p.id}" aria-label="Remover" style="color:var(--bad)">${ico('trash')}</button></td></tr>`).join('') || `<tr><td colspan="${multi ? 6 : 5}" class="empty">Ninguém cadastrado ainda.</td></tr>`}</tbody></table></div>
         <p class="muted small" style="margin:0">As mudanças de tipo, loja e limite salvam sozinhas. Nomes digitados no caixa que ainda não estão aqui entram automaticamente.</p>`;
     } else {
       const s = Store.settings(), sm = s.staffMenu || {};
@@ -4294,7 +4325,19 @@ const Equipe = {
     }
     if (G.eqTab === 'cad') {
       $$('[data-pt]', pg).forEach(x => x.onchange = () => Store.update('pessoas', x.dataset.pt, { tipo: x.value }));
-      $$('[data-pl]', pg).forEach(x => x.onchange = async () => { await Store.update('pessoas', x.dataset.pl, { loja: x.value }); toast('Loja alterada'); });
+      $$('[data-pl]', pg).forEach(x => x.onchange = async () => { const p = Store.allLojas('pessoas').find(y => y.id === x.dataset.pl); if (x.value === 'ambas') await Store.update('pessoas', p.id, { loja: Loja.of(p), lojas: Loja.list().map(l => l.id) }); else await Store.update('pessoas', p.id, { loja: x.value, lojas: [] }); toast(x.value === 'ambas' ? 'Liberado nas duas lojas' : 'Loja alterada'); });
+      const juntar = async (a, b) => {
+        const m = modal({ title: 'Juntar nomes', body: `<p style="margin:0">É a mesma pessoa? Escolha o <b>nome que fica</b>. Todos os lançamentos e vouchers do outro nome passam para ele, e a pessoa fica liberada nas duas lojas.</p><div class="col" style="gap:8px"><button class="btn big" data-fica="${b.id}">Fica <b>${esc(b.nome)}</b> &nbsp;<span class="muted small">(junta ${esc(a.nome)})</span></button><button class="btn big" data-fica="${a.id}">Fica <b>${esc(a.nome)}</b> &nbsp;<span class="muted small">(junta ${esc(b.nome)})</span></button></div>`, foot: '<button class="btn" data-x>Cancelar</button>' });
+        m.el.addEventListener('click', async e => { const bt = e.target.closest('[data-fica]'); if (!bt) return; bt.disabled = true; const fica = bt.dataset.fica, sai = fica === a.id ? b.id : a.id; toast('Juntando…'); const n = await this.juntarPessoas(sai, fica); m.close(); toast(`Juntado: ${n} ${n === 1 ? 'registro corrigido' : 'registros corrigidos'}`); G._memo = {}; G.render(); });
+      };
+      const dups = this.duplicados();
+      $$('[data-dj]', pg).forEach(x => x.onclick = () => { const [a, b] = dups[+x.dataset.dj]; juntar(a, b); });
+      $$('[data-dn]', pg).forEach(x => x.onclick = async () => { const [a, b] = dups[+x.dataset.dn]; await Store.update('settings', 'main', { dupIgnorados: [...(Store.base().dupIgnorados || []), [a.id, b.id].sort().join('|')] }); G.render(); });
+      $$('[data-pj]', pg).forEach(x => x.onclick = () => {
+        const a = Store.allLojas('pessoas').find(p => p.id === x.dataset.pj), outros = Store.allLojas('pessoas').filter(p => p.id !== a.id).sort((p, q) => p.nome.localeCompare(q.nome));
+        const m = modal({ title: `Juntar ${esc(a.nome)} com…`, body: `<label class="field"><span>É a mesma pessoa que</span><select class="input" id="pj-o"><option value="">Escolha…</option>${outros.map(p => `<option value="${p.id}">${esc(p.nome)} (${esc(Loja.curto(Loja.of(p)))})</option>`).join('')}</select></label>`, foot: '<button class="btn" data-x>Cancelar</button><button class="btn primary" id="pj-ok">Continuar</button>' });
+        $('#pj-ok', m.el).onclick = () => { const b = outros.find(p => p.id === $('#pj-o', m.el).value); if (!b) return toast('Escolha a pessoa', 'bad'); m.close(); juntar(a, b); };
+      });
       $$('[data-plim]', pg).forEach(x => x.onchange = async () => { await Store.update('pessoas', x.dataset.plim, { limite: num(x.value) || 0 }); toast(num(x.value) ? 'Limite salvo' : 'Sem limite'); });
       $$('[data-pdel]', pg).forEach(x => x.onclick = async () => { if (await confirmBox('Remover esta pessoa da lista? Os lançamentos dela continuam guardados.', { ok: 'Remover', danger: true })) Store.del('pessoas', x.dataset.pdel); });
       $$('[data-pe]', pg).forEach(x => x.onclick = () => this.editarPessoa(x.dataset.pe, () => { G._memo = {}; G.render(); }));
