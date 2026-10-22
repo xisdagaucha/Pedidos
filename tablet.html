@@ -3720,6 +3720,51 @@ const Equipe = {
   },
 
   /* ---------- GESTORA: corrigir prato e custo das refeições já lançadas num dia ---------- */
+  /* custos da ficha técnica (out/2026): acompanhamentos R$ 2,21 + proteína; lanches sem kit */
+  FT_CUSTO: { 2: ['Frango grelhado', 4.29], 3: ['Frango empanado', 5.56], 4: ['Alcatra', 9.19], 5: ['', 2.93], 6: ['Bisteca', 5.09] },
+  FT_LANCHE: { 'Xis Salada': 8.04, 'Xis Frango': 9.51, 'Xis Calabresa': 10.32, 'Kachurrasco na chapa': 8.19, 'Cachorro-quente simples': 4.35, 'Cachorro-quente duplo': 5.30 },
+  /* aplica o custo do cardápio (por dia da semana / por lanche) nas refeições já lançadas, nas duas lojas */
+  recalcular(done) {
+    const sm = JSON.parse(JSON.stringify(Store.base().staffMenu || {})), dias = [2, 3, 4, 5, 6, 1];
+    const lan = [...new Set([...this.menuDia(0).lanches, ...Object.keys((sm[0] || {}).custoLanche || {})])].map(id => Store.get('items', id)).filter(Boolean);
+    const sugD = d => (sm[d] || {}).custo || (this.FT_CUSTO[d] || [])[1] || '', sugL = i => ((sm[0] || {}).custoLanche || {})[i.id] || this.FT_LANCHE[i.name] || '';
+    const ini = new Date(); ini.setMonth(ini.getMonth() - 3); ini.setDate(1);
+    const m = modal({ title: 'Recalcular custo das refeições', wide: true, body: `<p class="muted" style="margin-top:0">Coloca o custo de cada dia da semana nas refeições <b>já lançadas</b> (as duas lojas). Os valores já vêm da ficha técnica; confira e ajuste se precisar. Eles também ficam salvos no Cardápio da equipe para os próximos dias.</p>
+      <div class="row"><label class="field"><span>De</span><input class="input" type="date" id="rc-de" value="${this.dIn(ini.getTime())}"></label><label class="field"><span>Até</span><input class="input" type="date" id="rc-ate" value="${this.dIn(Date.now())}"></label></div>
+      <label class="row small"><input type="checkbox" id="rc-zero" checked> Só as refeições que estão com custo zerado</label>
+      <label class="row small"><input type="checkbox" id="rc-nome"> Trocar também o nome do prato nas refeições antigas (ex.: terça que saiu como peixe vira frango grelhado)</label>
+      <div class="table-wrap"><table class="t"><thead><tr><th>Dia</th><th>Prato</th><th class="r">Custo (R$)</th></tr></thead><tbody>
+      ${dias.map(d => `<tr><td><b>${DIAS[d]}</b></td><td><input class="input" data-rp="${d}" value="${esc(d === 2 ? 'Frango grelhado' : (sm[d] || {}).proteina || (this.FT_CUSTO[d] || [])[0] || '')}"></td><td class="r"><input class="input num" data-rc="${d}" style="width:110px;text-align:right" inputmode="decimal" value="${sugD(d) ? money(sugD(d)) : ''}" placeholder="0,00"></td></tr>`).join('')}
+      </tbody></table></div>
+      ${lan.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Lanche (domingo e entregadores)</th><th class="r">Custo (R$)</th></tr></thead><tbody>${lan.map(i => `<tr><td>${esc(i.name)}</td><td class="r"><input class="input num" data-rl="${i.id}" style="width:110px;text-align:right" inputmode="decimal" value="${sugL(i) ? money(sugL(i)) : ''}" placeholder="0,00"></td></tr>`).join('')}</tbody></table></div>` : ''}
+      <p class="muted small" style="margin:0">Sexta e o peixe: o preço do peixe ainda está pendente na ficha técnica, então está só com os acompanhamentos. Óleo de fritura não entra.</p>`,
+      foot: '<button class="btn" data-x>Cancelar</button><button class="btn primary" id="rc-ok">Recalcular</button>' });
+    $('#rc-ok', m.el).onclick = async () => {
+      const de = this.dOut($('#rc-de', m.el).value), ate = this.dOut($('#rc-ate', m.el).value) + DAY, soZero = $('#rc-zero', m.el).checked, trocaNome = $('#rc-nome', m.el).checked;
+      if (!de || !ate || ate <= de) return toast('Confira as datas');
+      const cd = {}, cl = {};
+      $$('[data-rc]', m.el).forEach(i => { const d = i.dataset.rc; cd[d] = num(i.value); sm[d] = Object.assign({}, sm[d] || {}, { proteina: $(`[data-rp="${d}"]`, m.el).value.trim() || (sm[d] || {}).proteina || '', custo: cd[d] }); });
+      $$('[data-rl]', m.el).forEach(i => { if (i.value.trim()) cl[i.dataset.rl] = num(i.value); });
+      sm[0] = Object.assign({}, sm[0] || {}, { custoLanche: Object.assign({}, (sm[0] || {}).custoLanche || {}, cl) });
+      $('#rc-ok', m.el).disabled = true; $('#rc-ok', m.el).textContent = 'Recalculando…';
+      await Store.update('settings', 'main', { staffMenu: sm });
+      const all = Store.mode === 'demo' ? Store.allLojas('equipe').filter(r => r.at >= de && r.at < ate) : (await Store.db.collection('equipe').where('at', '>=', de).where('at', '<', ate).get()).docs.map(d => Object.assign({ id: d.id }, d.data()));
+      let n = 0, tot = 0;
+      for (const r of all) {
+        if (r.kind !== 'refeicao') continue;
+        const wd = new Date(r.at).getDay(), c = r.itemId ? cl[r.itemId] : cd[wd], nome = !r.itemId && trocaNome ? (sm[wd] || {}).proteina : '';
+        const patch = {};
+        if (c && c !== r.custo && !(soZero && r.custo)) patch.custo = c;
+        if (nome && nome !== r.prato) patch.prato = nome;
+        if (!Object.keys(patch).length) continue;
+        await Store.update('equipe', r.id, Object.assign(patch, { loja: r.loja || Loja.of(r), corrigido: { at: Date.now(), by: Equipe.quem(), antes: { prato: r.prato, custo: r.custo || 0 } } }));
+        n++; tot += patch.custo || 0;
+      }
+      Gestora._memo = {}; m.close();
+      toast(n ? `${plural(n, 'refeição atualizada', 'refeições atualizadas')} · ${brl(tot)}` : 'Nenhuma refeição para atualizar no período');
+      done && done();
+    };
+  },
   corrigirDia(dia, ms, done) {
     const wd = new Date(dia).getDay(), md = this.menuDia(wd), pratos = ms.filter(r => !r.itemId), lanches = ms.filter(r => r.itemId);
     const atual = [...new Set(pratos.map(r => r.prato))].join(' / ');
@@ -4225,7 +4270,8 @@ const Equipe = {
       const semCusto = meals.filter(r => !r.custo).length;
       G._eqCsv = [['Dia', 'Refeições', 'Almoço', 'Janta', 'Entregadores', 'Custo'], ...Object.entries(days).sort((x, y) => y[0] - x[0]).map(([k, d]) => [fmtDate(+k), d.n, d.alm, d.jan, d.ent, money(d.custo)])];
       html = `<div class="kpis"><div class="kpi"><span class="label">Custo com alimentação</span><span class="v">${brl(tot)}</span><span class="d">${lbl}</span></div><div class="kpi"><span class="label">Refeições</span><span class="v">${meals.length}</span><span class="d">${meals.filter(r => r.tipo === 'entregador').length} de entregadores</span></div><div class="kpi"><span class="label">Custo médio por refeição</span><span class="v">${brl(meals.length ? tot / meals.length : 0)}</span></div><div class="kpi"><span class="label">Média por dia</span><span class="v">${brl(nd ? tot / nd : 0)}</span><span class="d">projeção do mês (26 dias): ${brl(nd ? tot / nd * 26 : 0)}</span></div></div>
-        ${semCusto ? `<div class="alert">${ico('cash')}<div class="grow">${plural(semCusto, 'refeição ficou', 'refeições ficaram')} sem custo porque o dia não tinha custo cadastrado. Toque no dia na tabela abaixo e use <b>Corrigir este dia</b>, ou preencha em "Cardápio da equipe" para os próximos.</div></div>` : ''}
+        ${semCusto ? `<div class="alert">${ico('cash')}<div class="grow">${plural(semCusto, 'refeição ficou', 'refeições ficaram')} sem custo porque o dia não tinha custo cadastrado.</div><button class="btn sm primary" data-recalc>Recalcular custos</button></div>` : ''}
+        <div class="row"><span class="grow"></span><button class="btn sm" data-recalc>${ico('cash')} Recalcular custos com o cardápio</button></div>
         <div class="card"><h3 style="margin-bottom:10px">Custo por dia</h3>${!tot ? '<p class="muted" style="margin:0">Sem custo cadastrado no período.</p>' : barChart(Object.entries(days).sort((x, y) => x[0] - y[0]).map(([k, d]) => ({ l: fmtDate(+k).slice(0, 5), v: d.custo })), { money: true })}</div>
         <p class="muted small" style="margin:0">Toque num dia para ver quem comeu e o que comeu. Se o prato ou o custo estiverem errados, use <b>Corrigir este dia</b>.</p>
         <div class="ct-list">${Object.entries(days).sort((x, y) => y[0] - x[0]).map(([k, d]) => { const open = (G.cuOpen = G.cuOpen || new Set()).has(k), ms = meals.filter(r => dayStart(r.at) === +k).sort((a, b) => a.at - b.at), pr = [...new Set(ms.filter(r => !r.itemId).map(r => r.prato))];
@@ -4300,6 +4346,7 @@ const Equipe = {
     $$('[data-sit]', pg).forEach(x => x.onclick = () => { G.eqSit = x.dataset.sit; G.render(); });
     const re = () => { G._memo = {}; G.render(); };
     $$('[data-cu]', pg).forEach(x => x.onclick = () => { const k = x.dataset.cu, o = (G.cuOpen = G.cuOpen || new Set()); o.has(k) ? o.delete(k) : o.add(k); G.render(); });
+    $$('[data-recalc]', pg).forEach(x => x.onclick = () => this.recalcular(re));
     $$('[data-cud]', pg).forEach(x => x.onclick = () => this.corrigirDia(+x.dataset.cud, rs.filter(r => r.kind === 'refeicao' && dayStart(r.at) === +x.dataset.cud), re));
     if ($('#ac-adi', pg)) { $('#ac-adi', pg).onclick = () => this.acertoNovo('adiant', re); $('#ac-sal', pg).onclick = () => this.acertoNovo('salario', re); $$('[data-acv]', pg).forEach(x => x.onclick = () => this.acertoVer(acertos.find(a => a.id === x.dataset.acv), re)); }
     if ($('#gl-con', pg)) { $('#gl-con', pg).onclick = () => this.consumoEsquecido(re); $('#gl-ref', pg).onclick = () => this.refeicaoEsquecida(re); $('#gl-adi', pg).onclick = () => this.adiantamento(re); }
