@@ -3055,7 +3055,7 @@ const Gestora = {
       };
       return;
     }
-    pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Cardápio</h1><div class="sub">${Store.all('items').length} itens em ${cats.length} categorias</div></div><button class="btn" id="cat-new">${ico('plus')} Nova categoria</button><button class="btn primary" id="it-new">${ico('plus')} Novo item</button></div>
+    pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Cardápio</h1><div class="sub">${Store.all('items').length} itens em ${cats.length} categorias</div></div><button class="btn" id="it-csv">${ico('download')} Baixar cardápio</button><button class="btn" id="cat-new">${ico('plus')} Nova categoria</button><button class="btn primary" id="it-new">${ico('plus')} Novo item</button></div>
       <div class="chips">${cats.map(x => `<button data-cf="${x.id}" class="${x.id === this.cf ? 'on' : ''}">${esc(x.name)}${x.visible === false ? ' (oculta)' : ''}</button>`).join('')}</div>
       ${c ? `<div class="card row"><div class="grow"><h3>${esc(c.name)}</h3><div class="muted small">Menu ${esc(c.menu || '-')} · imprime na <b>${esc(c.printer)}</b> (${esc(Store.base().printerLabels?.[c.printer] || '')}) · ${plural(items.length, 'item', 'itens')}${c.horario && c.horario.on ? ` · <span class="pill ${Horario.ok(c.horario) ? 'warn' : 'bad'}">${esc(Horario.txt(c.horario))}${Horario.ok(c.horario) ? '' : ' · fora do horário agora'}</span>` : ''}</div></div>
         <button class="btn sm" data-ctop title="Categoria para o começo">${ico('up')} Topo</button><button class="btn sm" data-cmv="-1" title="Subir categoria">${ico('up')}</button><button class="btn sm" data-cmv="1" title="Descer categoria">${ico('down')}</button><button class="btn sm" id="cat-ed">${ico('edit')} Editar categoria</button></div>` : ''}
@@ -3089,6 +3089,15 @@ const Gestora = {
     $$('[data-itop]', pg).forEach(b => b.onclick = async () => { const arr = items.slice(); const i = arr.findIndex(x => x.id === b.dataset.itop); if (i <= 0) return; arr.unshift(arr.splice(i, 1)[0]); await renum(arr, 'items'); toast('Item no topo da categoria'); });
     const ct = $('[data-ctop]', pg); if (ct) ct.onclick = async () => { const arr = cats.slice(); const i = arr.findIndex(x => x.id === this.cf); if (i <= 0) return; arr.unshift(arr.splice(i, 1)[0]); await renum(arr, 'categories'); toast('Categoria no começo do cardápio'); };
     $$('[data-cmv]', pg).forEach(b => b.onclick = async () => { const arr = cats.slice(); const i = arr.findIndex(x => x.id === this.cf), j = i + +b.dataset.cmv; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; await renum(arr, 'categories'); });
+    $('#it-csv', pg).onclick = () => {
+      const cs = Store.all('categories').slice().sort((a, b) => (a.order || 0) - (b.order || 0)), ord = new Map(cs.map((x, i) => [x.id, i]));
+      const its = Store.all('items').slice().sort((a, b) => (ord.get(a.catId) ?? 999) - (ord.get(b.catId) ?? 999) || (a.order || 0) - (b.order || 0));
+      const nomeCat = id => (cs.find(x => x.id === id) || {}).name || id || '';
+      const ops = i => (i.groups || []).filter(g => g.options && g.options.length).map(g => `${g.name}: ${g.options.map(o => o.name + (o.price ? ' +' + money(o.price) : '')).join(', ')}`).join(' | ');
+      const lj = Loja.cur && Loja.cur() !== '*' ? (Loja.cfg(Loja.cur()) || {}).nome || '' : '';
+      downloadCSV(`cardapio-pedido-x${lj ? '-' + stripAcc(lj).toLowerCase().replace(/[^a-z0-9]+/g, '-') : ''}-${new Date().toISOString().slice(0, 10)}.csv`,
+        [['Categoria', 'Item', 'Preço (R$)', 'Aparece no tablet', 'Situação', 'Descrição', 'Opções e adicionais'], ...its.map(i => [nomeCat(i.catId), i.name, money(i.price || 0), i.visible === false ? 'não' : 'sim', i.available === false ? 'esgotado' : 'disponível', i.desc || '', ops(i)])]);
+    };
     $('#it-new', pg).onclick = () => this.editItem({ catId: this.cf, name: '', desc: '', price: 0, groups: [], visible: true, available: true, recommended: false, printer: '', photo: '', order: Date.now() / 1e10 });
     $('#cat-new', pg).onclick = () => this.editCat({ name: '', menu: '', printer: 'POS', visible: true, order: cats.length });
     const ce = $('#cat-ed', pg); if (ce) ce.onclick = () => this.editCat(c);
