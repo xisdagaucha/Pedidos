@@ -1830,7 +1830,7 @@ const Tablet = {
     this.off = Store.on(() => this.render());
     ['pointerdown', 'keydown'].forEach(ev => root.addEventListener(ev, () => this.bumpIdle()));
     this.beat(); this.beatT = setInterval(() => this.beat(), 60000);
-    this._lastTouch = Date.now(); this.asleep = false; clearInterval(this.sleepT); this.sleepT = setInterval(() => this.checkSleep(), 10000);
+    this._lastTouch = Date.now(); this.asleep = false; clearInterval(this.sleepT); this.sleepT = setInterval(() => this.checkSleep(), 10000); setTimeout(() => this.bright(true), 800);
     this._timedSig = this.timedSig(); this.timedT = setInterval(() => this.checkTimed(), 30000);
     this.showReserva();
     clearTimeout(this.setupT); if (!this.mesa || !Loja.configured()) this.setupT = setTimeout(() => this.deviceSetup(true), 300);
@@ -1840,6 +1840,7 @@ const Tablet = {
   /* economia de bateria: sem ninguém mexer, a tela apaga (fundo preto e brilho no mínimo); um toque acende de novo */
   checkSleep() {
     const c = Store.settings().tabletSleep || { on: true, min: 3 };
+    if (!this.asleep && this.root) this.bright();
     if (this.asleep || c.on === false || !this.root || !this.mesa) return;
     if (Date.now() - (this._lastTouch || 0) < Math.max(1, +c.min || 3) * 60000) return;
     if ($('.modal-back') || $('#t-reserva')) return;
@@ -1848,7 +1849,7 @@ const Tablet = {
   sleep() {
     if (this.asleep || !this.root) return;
     this.asleep = true; clearInterval(this.carT); cancelAnimationFrame(this.stripRAF);
-    try { if (window.fully && fully.setScreenBrightness) { this._bri = fully.getScreenBrightness ? fully.getScreenBrightness() : null; fully.setScreenBrightness(1); } } catch (e) { }
+    try { if (window.fully && fully.setScreenBrightness) fully.setScreenBrightness(1); } catch (e) { }
     const ov = document.createElement('div'); ov.id = 't-sleep'; ov.className = 't-sleep';
     ov.innerHTML = `<div class="sl-in"><span class="mark"><span class="logo" aria-hidden="true"></span></span><b>${esc(Store.settings().storeName || '')}</b><span>Toque na tela para ver o cardápio</span></div>`;
     const mv = () => { const i = $('.sl-in', ov); if (i) { i.style.left = (10 + Math.random() * 55) + '%'; i.style.top = (10 + Math.random() * 60) + '%'; } };
@@ -1860,12 +1861,25 @@ const Tablet = {
   wake(silent) {
     if (!this.asleep) return;
     this.asleep = false; clearInterval(this._slMv);
-    try { if (window.fully && fully.setScreenBrightness) fully.setScreenBrightness(this._bri != null && this._bri > 1 ? this._bri : 180); } catch (e) { }
+    this.bright(true);
     const ov = $('#t-sleep'); if (ov) setTimeout(() => ov.remove(), 60);
     if (silent) return;
     this._lastTouch = Date.now(); this.bumpIdle(); this.render(true);
   },
+  /* brilho da tela acesa: definido na Gestão (padrão 90%). Reaplica no toque, porque o Android ou o
+     brilho automático às vezes escurecem sozinhos e não voltavam quando o cliente pegava o tablet */
+  bright(force) {
+    if (this.asleep || !(window.fully && fully.setScreenBrightness)) return;
+    if (!force && Date.now() - (this._briAt || 0) < 4000) return;
+    this._briAt = Date.now();
+    try {
+      const alvo = Math.round(2.55 * Math.max(20, Math.min(100, +(Store.settings().tabletSleep || {}).bri || 90)));
+      const at = fully.getScreenBrightness ? +fully.getScreenBrightness() : -1;
+      if (force || !(at >= 0) || Math.abs(at - alvo) > 6) fully.setScreenBrightness(alvo);
+    } catch (e) { }
+  },
   bumpIdle() {
+    this.bright();
     this._lastTouch = Date.now();
     clearTimeout(this.idleT);
     this.idleT = setTimeout(() => { if (this.cart.length) { this.cart = []; this.renderCartbar(); } $$('.modal-back').forEach(m => m.remove()); const mm = $('#t-main'); if (mm) mm.scrollTop = 0; }, 5 * 60000);
@@ -3319,7 +3333,7 @@ const Gestora = {
         <div class="row"><label class="field grow"><span>Pedidos da cozinha saem na</span>${sel(`data-lr="${l.id}|POS"`, (l.rota || {}).POS || ps[0])}</label><label class="field grow"><span>Itens do caixa (bebidas) saem na</span>${sel(`data-lr="${l.id}|EPSON"`, (l.rota || {}).EPSON || ps[ps.length - 1])}</label></div>
         <div class="row"><label class="field grow"><span>Pré-conta e fechamento</span>${sel(`data-lcp="${l.id}"`, l.contaPrinter)}</label><label class="field grow"><span>Chamado de garçom</span>${sel(`data-lch="${l.id}"`, l.chamadoPrinter)}</label></div>
         <p class="muted small" style="margin:0">${l.mesas || 20} mesas e ${l.comandas || 60} comandas (muda em Mesas e comandas).</p></div>`; }).join('')}</div>
-      <div class="card"><h3 style="margin-bottom:12px">Tablet</h3><div class="row" style="margin-bottom:14px"><label class="field"><span>Senha do tablet (caixa)</span><input class="input num" id="cf-tp" maxlength="6" inputmode="numeric" value="${esc(s.tabletPin || '')}" style="width:140px"></label><span class="muted small grow" style="align-self:flex-end">Segure o botão "Mesa" no tablet para abrir as opções. Trocar de mesa e sair do aplicativo pedem esta senha ou a da gestão.</span></div><div class="row" style="margin-bottom:14px;align-items:flex-end"><label class="row" style="gap:10px"><span class="switch"><input type="checkbox" id="cf-sl" ${(s.tabletSleep || {}).on !== false ? 'checked' : ''}><i></i></span><b>Economia de bateria</b></label><label class="field"><span>Apagar a tela depois de</span><span class="row" style="gap:6px"><input class="input num" id="cf-slm" type="number" min="1" max="60" value="${(s.tabletSleep || {}).min || 3}" style="width:80px"> minutos sem uso</span></label><span class="muted small grow">A tela fica preta com o brilho no mínimo. Um toque acende de novo, sem fazer pedido.</span></div><div class="col">${F.map(([k, t, d]) => `<label class="row" style="align-items:flex-start;gap:12px"><span class="switch"><input type="checkbox" data-ft="${k}" ${s.features[k] ? 'checked' : ''}><i></i></span><span><b>${t}</b><br><span class="muted small">${d}</span></span></label>`).join('')}</div></div>
+      <div class="card"><h3 style="margin-bottom:12px">Tablet</h3><div class="row" style="margin-bottom:14px"><label class="field"><span>Senha do tablet (caixa)</span><input class="input num" id="cf-tp" maxlength="6" inputmode="numeric" value="${esc(s.tabletPin || '')}" style="width:140px"></label><span class="muted small grow" style="align-self:flex-end">Segure o botão "Mesa" no tablet para abrir as opções. Trocar de mesa e sair do aplicativo pedem esta senha ou a da gestão.</span></div><div class="row" style="margin-bottom:14px;align-items:flex-end"><label class="row" style="gap:10px"><span class="switch"><input type="checkbox" id="cf-sl" ${(s.tabletSleep || {}).on !== false ? 'checked' : ''}><i></i></span><b>Economia de bateria</b></label><label class="field"><span>Apagar a tela depois de</span><span class="row" style="gap:6px"><input class="input num" id="cf-slm" type="number" min="1" max="60" value="${(s.tabletSleep || {}).min || 3}" style="width:80px"> minutos sem uso</span></label><label class="field"><span>Brilho com a tela acesa</span><span class="row" style="gap:6px"><input class="input num" id="cf-sbr" type="number" min="20" max="100" value="${(s.tabletSleep || {}).bri || 90}" style="width:80px"> %</span></label><span class="muted small grow">A tela fica preta com o brilho no mínimo. Um toque acende de novo, sem fazer pedido.</span></div><div class="col">${F.map(([k, t, d]) => `<label class="row" style="align-items:flex-start;gap:12px"><span class="switch"><input type="checkbox" data-ft="${k}" ${s.features[k] ? 'checked' : ''}><i></i></span><span><b>${t}</b><br><span class="muted small">${d}</span></span></label>`).join('')}</div></div>
       <div class="grid-2"><div class="card col"><h3>Caixa</h3><label class="row"><span class="switch"><input type="checkbox" id="cf-cpin" ${s.cancelPin ? 'checked' : ''}><i></i></span> Pedir PIN de gestão para cancelar</label><label class="field"><span>Taxa de serviço padrão (%)</span><input class="input num" id="cf-fee" value="${s.serviceFeeDefault || 0}" style="width:100px"></label><label class="field"><span>Formas de pagamento (uma por linha)</span>${list('cf-pm', s.paymentMethods)}<span class="muted small">Para criar uma forma nova, escreva numa linha nova e clique em Salvar. Para tirar, apague a linha. Aparece no caixa, no fechamento e nos relatórios.</span></label></div>
         <div class="card col"><h3>Chamar garçom e pesquisa</h3><label class="field"><span>Opções rápidas do chamado (uma por linha)</span>${list('cf-wo', s.waiterOptions)}</label><label class="field"><span>Notas da pesquisa (uma por linha)</span>${list('cf-sm', s.survey.metrics)}</label><label class="field"><span>"Como nos conheceu?" (uma por linha)</span>${list('cf-ss', s.survey.sources)}</label></div></div>
       ${Store.mode === 'demo' ? `<div class="card row"><div class="grow"><h3>Demonstração</h3><p class="muted small" style="margin:4px 0 0">Apaga os pedidos de teste e volta o cardápio ao exemplo inicial.</p></div><button class="btn danger" id="cf-reset">Zerar demonstração</button></div>` : ''}`;
@@ -3366,7 +3380,7 @@ const Gestora = {
       const features = Object.assign({}, s.features); $$('[data-ft]', pg).forEach(i => features[i.dataset.ft] = i.checked);
       const gp = $('#cf-gp', pg).value.trim(); if (!/^\d{4}$/.test(gp)) return toast('O PIN de gestão precisa ter 4 números', 'bad');
       const lojas = readLojas(); if (!lojas) return;
-      await Store.update('settings', 'main', { printCfg: readPc(), storeName: $('#cf-n', pg).value.trim() || s.storeName, gestoraPin: gp, tabletPin: $('#cf-tp', pg).value.trim() || s.tabletPin || '0000', tabletSleep: { on: $('#cf-sl', pg).checked, min: Math.max(1, Math.min(60, +$('#cf-slm', pg).value || 3)) }, detailedPrint: $('#cf-det', pg).checked, features, cancelPin: $('#cf-cpin', pg).checked, serviceFeeDefault: num($('#cf-fee', pg).value), paymentMethods: lines('#cf-pm'), waiterOptions: lines('#cf-wo'), survey: { metrics: lines('#cf-sm'), sources: lines('#cf-ss') }, lojas });
+      await Store.update('settings', 'main', { printCfg: readPc(), storeName: $('#cf-n', pg).value.trim() || s.storeName, gestoraPin: gp, tabletPin: $('#cf-tp', pg).value.trim() || s.tabletPin || '0000', tabletSleep: { on: $('#cf-sl', pg).checked, min: Math.max(1, Math.min(60, +$('#cf-slm', pg).value || 3)), bri: Math.max(20, Math.min(100, +$('#cf-sbr', pg).value || 90)) }, detailedPrint: $('#cf-det', pg).checked, features, cancelPin: $('#cf-cpin', pg).checked, serviceFeeDefault: num($('#cf-fee', pg).value), paymentMethods: lines('#cf-pm'), waiterOptions: lines('#cf-wo'), survey: { metrics: lines('#cf-sm'), sources: lines('#cf-ss') }, lojas });
       toast('Configurações salvas');
     };
     const r = $('#cf-reset', pg); if (r) r.onclick = async () => { if (await confirmBox('Zerar todos os dados da demonstração?', { ok: 'Zerar', danger: true })) { Store.demoReset(); toast('Demonstração zerada'); } };
