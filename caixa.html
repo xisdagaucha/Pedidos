@@ -3538,7 +3538,8 @@ const Equipe = {
   },
   /* corrige o nome de um lançamento (digitado errado) */
   editarLancamento(id, by, onDone) {
-    const r = Store.get('equipe', id); if (!r) return;
+    if (!Store.get('equipe', id)) return this.garantir(id).then(ok => ok ? this.editarLancamento(id, by, onDone) : toast('Lançamento não encontrado', 'bad'));
+    const r = Store.get('equipe', id);
     const m = modal({ title: 'Corrigir nome do lançamento', body: `${this.nomesDatalist()}<p class="muted small" style="margin:0">${fmtDT(r.at)} · ${r.kind === 'consumo' ? 'consumo ' + brl(r.aDescontar) : esc(r.refeicao + ' · ' + r.prato)}</p>
       <label class="field"><span>Nome certo</span><input class="input" id="el-n" list="eq-nomes" autocomplete="off" value="${esc(r.nome)}"></label>
       ${r.voucherUsado ? '<p class="muted small" style="margin:0">Este lançamento usou voucher. Ao trocar o nome, o valor volta para o voucher da pessoa anterior e sai do voucher da pessoa certa (se ela tiver saldo).</p>' : ''}`,
@@ -3843,8 +3844,15 @@ const Equipe = {
       if (v) await Store.update('vouchers', v.id, { saldo: round2((v.saldo || 0) + u.valor), loja: v.loja || Loja.of(v) });
     }
   },
+  /* o app só guarda na memória os lançamentos das últimas 36 h; os mais antigos são buscados no banco na hora */
+  async garantir(id) {
+    if (Store.get('equipe', id)) return true;
+    if (Store.mode === 'demo' || !Store.db) return false;
+    try { const d = await Store.db.collection('equipe').doc(id).get(); if (!d.exists) return false; Store.cache.equipe[id] = Object.assign({ id: d.id }, d.data()); return true; } catch (e) { return false; }
+  },
   corrigirLanc(id, done) {
-    const r0 = Store.get('equipe', id); if (!r0) return toast('Lançamento não encontrado', 'bad');
+    if (!Store.get('equipe', id)) return this.garantir(id).then(ok => ok ? this.corrigirLanc(id, done) : toast('Lançamento não encontrado', 'bad'));
+    const r0 = Store.get('equipe', id);
     const refresh = () => { if (typeof Gestora !== 'undefined') Gestora._memo = {}; done && done(); };
     const m = modal({ title: 'Corrigir lançamento', body: '', foot: '<button class="btn" data-x>Fechar</button>' });
     const draw = () => {
@@ -4121,7 +4129,7 @@ const Equipe = {
     $('#eq-con', pg).onclick = () => this.lancarConsumo(pdv.op.name);
     $$('[data-en]', pg).forEach(b => b.onclick = () => this.editarLancamento(b.dataset.en, pdv.op.name));
     $$('[data-rp]', pg).forEach(b => b.onclick = () => {
-      const r = Store.get('equipe', b.dataset.rp);
+      const r = Store.get('equipe', b.dataset.rp); if (!r) return;
       if (r.kind === 'consumo') { this.printAssinatura(r); this.printKitchen('CONSUMO FUNCIONÁRIO', r.nome, r.items, { by: r.by, at: r.at }); }
       else { if (r.extras) this.printAssinatura(this.assinaturaExtras(r)); this.printKitchen(`${r.refeicao.toUpperCase()} DA EQUIPE`, r.nome, [{ qty: 1, name: r.prato, opts: this.extrasOpts(r), printer: r.itemId && Store.get('items', r.itemId) ? Biz.printerFor(Store.get('items', r.itemId)) : 'POS' }], { viagem: r.viagem, obs: r.obs ? 'RETIRAR: ' + r.obs : '', refeicao: r.refeicao, by: r.by, at: r.at }); }
       toast('Enviado para impressão');
@@ -4384,7 +4392,7 @@ const Equipe = {
       $('#vc-new', pg).onclick = () => this.darVoucher('Gestora'); $('#vc-use', pg).onclick = () => this.usarVoucherGestora('Gestora'); $$('[data-vu]', pg).forEach(x => x.onclick = () => this.usarVoucherGestora('Gestora', x.dataset.vu)); $$('[data-vdel]', pg).forEach(x => x.onclick = async () => { if (await confirmBox('Excluir este voucher? O saldo some.', { ok: 'Excluir', danger: true })) Store.del('vouchers', x.dataset.vdel); }); }
     if (!noPeriod) { G.bindPeriod(pg); $('#eq-csv', pg).onclick = () => downloadCSV('consumo-equipe.csv', G._eqCsv || []); }
     $$('[data-en]', pg).forEach(x => x.onclick = () => this.editarLancamento(x.dataset.en, Equipe.quem(), () => { G._memo = {}; G.render(); }));
-    $$('[data-del]', pg).forEach(x => x.onclick = async () => { const r = Store.get('equipe', x.dataset.del); if (await confirmBox(`Excluir este lançamento?${r && r.voucherUsado ? ` ${brl(r.voucherUsado)} volta para o voucher.` : ''}`, { ok: 'Excluir', danger: true })) { if (r) await this.devolverVoucher(r); await Store.del('equipe', x.dataset.del); G._memo = {}; G.render(); } });
+    $$('[data-del]', pg).forEach(x => x.onclick = async () => { await this.garantir(x.dataset.del); const r = Store.get('equipe', x.dataset.del); if (await confirmBox(`Excluir este lançamento?${r && r.voucherUsado ? ` ${brl(r.voucherUsado)} volta para o voucher.` : ''}`, { ok: 'Excluir', danger: true })) { if (r) await this.devolverVoucher(r); await Store.del('equipe', x.dataset.del); G._memo = {}; G.render(); } });
     $$('[data-lc]', pg).forEach(x => x.onclick = () => this.corrigirLanc(x.dataset.lc, () => G.render()));
     $$('[data-sit]', pg).forEach(x => x.onclick = () => { G.eqSit = x.dataset.sit; G.render(); });
     const re = () => { G._memo = {}; G.render(); };
