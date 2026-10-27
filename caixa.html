@@ -994,7 +994,7 @@ const Contas = {
 /* cada aparelho pertence a uma loja; pedidos, comandas, impressões, caixa e equipe ficam separados por loja.
    cardápio, fotos e destaques são os mesmos para todas. A gestão pode ver uma loja ou todas. */
 const SCOPED = ['comandas', 'tickets', 'orders', 'events', 'calls', 'printJobs', 'devices', 'surveys', 'caixas', 'equipe', 'pessoas', 'vouchers'];
-const LOJA_FIELDS = ['mesas', 'comandas', 'printers', 'printerLabels', 'printerCols', 'contaPrinter', 'chamadoPrinter', 'rota', 'staffToday', 'qrCodes'];
+const LOJA_FIELDS = ['bebSem', 'mesas', 'comandas', 'printers', 'printerLabels', 'printerCols', 'contaPrinter', 'chamadoPrinter', 'rota', 'staffToday', 'qrCodes'];
 const Loja = {
   role() { return window.PEDIDOX_ROLE || (typeof App !== 'undefined' && App.role) || 'x'; },
   key() { const r = this.role(); return 'pedidox_loja_' + (Store.mode === 'demo' && r !== 'gestora' ? 'demo' : r); },
@@ -1725,7 +1725,10 @@ function bebidaGroups(item) {
   const n = stripAcc(String(item.name || '').toLowerCase());
   /* alcoólicas vão sempre primeiro, para a pessoa ir tomando: sem perguntas */
   if (/caipir|espanhola|cerveja|chopp|drink|batida|vinho|taca|gin\b|vodka|whisk|cachac|licor|aperol|dose|heineken|corona|amstel|brahma|skol|stella|budweiser|spaten|eisenbahn|itaipava|sub zero/.test(n)) return [];
-  return /milk|shake/.test(n) ? [BEB_QUANDO] : [BEB_QUANDO, BEB_COPO];
+  if (/milk|shake/.test(n)) return [BEB_QUANDO];
+  /* acabou limão ou gelo (marcado no caixa → Cardápio): tira as opções; sobrando só "Só o copo", nem pergunta */
+  const sem = S.bebSem || {}, copo = Object.assign({}, BEB_COPO, { options: BEB_COPO.options.filter(o => !(sem.gelo && /gelo/i.test(o.name)) && !(sem.limao && /lim/i.test(o.name))) });
+  return copo.options.length > 1 ? [BEB_QUANDO, copo] : [BEB_QUANDO];
 }
 function configureItem(item, { allowViagem = true, defaultViagem = false, editLine = null, showObs = true, bebida = true } = {}) {
   return new Promise(res => {
@@ -2623,9 +2626,16 @@ const PDV = {
     }
     pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Cardápio</h1><div class="sub">Acabou alguma coisa? Marque como esgotado e o tablet para de oferecer na hora.${Loja.multi() ? ` Vale só para ${esc(Loja.nome())}.` : ''}</div></div></div>
       ${offCount || offOpts ? `<div class="alert bad">${ico('pause')}<div class="grow">Esgotados agora: ${[offCount ? plural(offCount, 'item', 'itens') : '', offOpts ? plural(offOpts, 'adicional', 'adicionais') : ''].filter(Boolean).join(' e ')}. Lembre de liberar quando chegar.</div></div>` : ''}
+      <div class="card row" style="gap:10px"><b class="grow">Copo da bebida</b>${[['limao', 'Limão'], ['gelo', 'Gelo']].map(([k, t]) => `<span class="row" style="gap:6px">${t}<button class="tgl ${(Store.settings().bebSem || {})[k] ? 'off' : 'on'}" data-bs="${k}">${(Store.settings().bebSem || {})[k] ? 'Acabou' : 'Tem'}</button></span>`).join('')}<span class="muted small" style="flex-basis:100%">Acabou o limão ou o gelo? Marque aqui e o tablet para de oferecer no copo da bebida.</span></div>
       <div class="tabs"><button data-mt="itens" class="${this.mnTab === 'itens' ? 'on' : ''}">Itens</button><button data-mt="adic" class="${this.mnTab === 'adic' ? 'on' : ''}">Adicionais e opções</button></div>
       <input class="input" id="mn-q" type="search" placeholder="${this.mnTab === 'itens' ? 'Buscar item (ex.: gourmet, coca)' : 'Buscar adicional (ex.: bacon)'}" value="${esc(this.mnQ)}" style="max-width:420px">
       ${body}`;
+    $$('[data-bs]', pg).forEach(b => b.onclick = async () => {
+      const k = b.dataset.bs, sem = Object.assign({}, Store.settings().bebSem || {}); sem[k] = !sem[k];
+      await Store.setLoja({ bebSem: sem }); const t = k === 'gelo' ? 'Gelo' : 'Limão';
+      await Biz.log(sem[k] ? `${t} acabou` : `${t} liberado`, null, 'copo da bebida', 'Caixa', this.op.name);
+      toast(sem[k] ? `${t}: o tablet não oferece mais` : `${t} liberado no tablet`); this.render();
+    });
     $$('[data-mt]', pg).forEach(b => b.onclick = () => { this.mnTab = b.dataset.mt; this.mnQ = ''; this.render(); });
     const qi = $('#mn-q', pg); qi.oninput = debounce(() => { this.mnQ = qi.value; this.render(); const n = $('#mn-q'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250);
     const setItem = async (it, avail) => { await Biz.setItemAvail(it.id, avail); await Biz.log(avail ? 'Item liberado' : 'Item esgotado', null, it.name, 'Caixa', this.op.name); };
