@@ -689,7 +689,7 @@ const LOGO_ROLE = { caixa: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2
 
 /* ===================== Pedido X — núcleo ===================== */
 'use strict';
-const APP_VERSION = '2.9.2';
+const APP_VERSION = '2.10.0';
 
 /* ---------- utilitários ---------- */
 const $ = (s, el = document) => el.querySelector(s);
@@ -1846,13 +1846,26 @@ const Tablet = {
     this.off = Store.on(() => this.render());
     ['pointerdown', 'keydown'].forEach(ev => root.addEventListener(ev, () => this.bumpIdle()));
     this.beat(); this.beatT = setInterval(() => this.beat(), 60000);
-    this._lastTouch = Date.now(); this.asleep = false; clearInterval(this.sleepT); this.sleepT = setInterval(() => this.checkSleep(), 10000); setTimeout(() => this.bright(true), 800);
+    this._lastTouch = Date.now(); this.asleep = false; clearInterval(this.sleepT); this.sleepT = setInterval(() => this.checkSleep(), 10000); setTimeout(() => this.bright(true), 800); clearInterval(this.updT); this.updT = setInterval(() => this.checkUpdate(), 10 * 60000); setTimeout(() => this.checkUpdate(), 30000);
     this._timedSig = this.timedSig(); this.timedT = setInterval(() => this.checkTimed(), 30000);
     this.showReserva();
     clearTimeout(this.setupT); if (!this.mesa || !Loja.configured()) this.setupT = setTimeout(() => this.deviceSetup(true), 300);
   },
-  unmount() { this.wake(true); clearInterval(this.sleepT); clearInterval(this.timedT); clearInterval(this.carT); cancelAnimationFrame(this.stripRAF); this.root = null; clearTimeout(this.setupT); this.off && this.off(); clearInterval(this.beatT); clearTimeout(this.idleT); },
+  unmount() { this.wake(true); clearInterval(this.sleepT); clearInterval(this.updT); clearInterval(this.timedT); clearInterval(this.carT); cancelAnimationFrame(this.stripRAF); this.root = null; clearTimeout(this.setupT); this.off && this.off(); clearInterval(this.beatT); clearTimeout(this.idleT); },
 
+  /* atualização sozinha: a cada 10 min pergunta ao site (só o cabeçalho, quase nada de internet) se o arquivo mudou;
+     se mudou e ninguém está usando o tablet, recarrega com a versão nova */
+  async checkUpdate() {
+    if (Store.mode === 'demo' || !/^https?:/.test(location.protocol)) return;
+    try {
+      const r = await fetch(location.pathname, { method: 'HEAD', cache: 'no-store' });
+      const tag = r.headers.get('etag') || r.headers.get('last-modified'); if (!r.ok || !tag) return;
+      if (!this._verTag) { this._verTag = tag; return; }
+      if (tag === this._verTag) return;
+      const livre = this.asleep || (Date.now() - (this._lastTouch || 0) > 3 * 60000 && !this.cart.length && !$('.modal-back'));
+      if (livre) location.reload();
+    } catch (e) { }
+  },
   /* economia de bateria: sem ninguém mexer, a tela apaga (fundo preto e brilho no mínimo); um toque acende de novo */
   checkSleep() {
     const c = Store.settings().tabletSleep || { on: true, min: 3 };
@@ -3224,7 +3237,7 @@ const Gestora = {
   async vMesas(pg) {
     const s = Store.settings(); this.qrTab = this.qrTab || 'comandas';
     const n = this.qrTab === 'comandas' ? s.comandas : s.mesas;
-    pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Mesas e comandas</h1><div class="sub">O QR da comanda confirma pedidos no tablet. O da mesa é opcional.${Loja.multi() ? ` As folhas de QR servem para qualquer loja; a quantidade abaixo é de <b>${esc(Loja.nome(Loja.w()))}</b>${Loja.all() ? ' (escolha a loja no topo para mudar outra)' : ''}.` : ''}</div></div><button class="btn" id="qr-pr">${ico('printer')} Imprimir folha de QR</button></div>
+    pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Mesas e comandas</h1><div class="sub">O QR da comanda confirma pedidos no tablet. O da mesa é opcional.${Loja.multi() ? ` As folhas de QR servem para qualquer loja; a quantidade abaixo é de <b>${esc(Loja.nome(Loja.w()))}</b>${Loja.all() ? ' (escolha a loja no topo para mudar outra)' : ''}.` : ''}</div></div><button class="btn" id="qr-pr">${ico('printer')} Imprimir folha de QR</button><button class="btn primary" id="qr-cmd">${ico('printer')} Comandas com o logo</button></div>
       <div class="card row" style="align-items:center"><div class="grow"><b>Usar as comandas que você já tem</b><div class="muted small">Cartões da Goomer ou de outro sistema: passe cada cartão uma vez na câmera do celular e diga o número dele. ${(() => { const c = Object.keys(s.qrCodes || {}).length; return c ? `<b>${c} ${c === 1 ? 'cartão cadastrado' : 'cartões cadastrados'}</b>${Loja.multi() ? ` em ${esc(Loja.nome(Loja.w()))}` : ''}.` : 'Nenhum cartão cadastrado ainda.'; })()}</div></div><button class="btn primary" id="qr-old">${ico('qr')} Cadastrar comandas</button>${Object.keys(s.qrCodes || {}).length ? '<button class="btn" id="qr-list">Ver cadastradas</button>' : ''}</div>
       <div class="card row"><label class="field"><span>Quantidade de mesas</span><input class="input num" id="mq-m" type="number" min="1" max="200" value="${s.mesas}" style="width:110px"></label><label class="field"><span>Quantidade de comandas</span><input class="input num" id="mq-c" type="number" min="1" max="999" value="${s.comandas}" style="width:110px"></label><button class="btn primary" id="mq-ok" style="align-self:flex-end">Salvar</button></div>
       <div class="tabs"><button data-qt="comandas" class="${this.qrTab === 'comandas' ? 'on' : ''}">QR das comandas</button><button data-qt="mesas" class="${this.qrTab === 'mesas' ? 'on' : ''}">QR das mesas</button></div>
@@ -3232,6 +3245,7 @@ const Gestora = {
     $$('[data-qt]', pg).forEach(b => b.onclick = () => { this.qrTab = b.dataset.qt; this.render(); });
     $('#mq-ok', pg).onclick = async () => { await Store.setLoja({ mesas: Math.max(1, +$('#mq-m', pg).value), comandas: Math.max(1, +$('#mq-c', pg).value) }); toast('Salvo'); };
     $('#qr-pr', pg).onclick = () => printSheet($('#qr-sheet', pg).innerHTML);
+    $('#qr-cmd', pg).onclick = () => comandaModelo();
     $('#qr-old', pg).onclick = () => { if (Loja.all()) return toast('Escolha a loja no topo primeiro', 'bad'); this.cadastrarComandas(); };
     if ($('#qr-list', pg)) $('#qr-list', pg).onclick = () => this.listaComandas();
     try {
@@ -3487,6 +3501,106 @@ function printBadges(inner) {
   const w = window.open('', '_blank'); if (!w) { toast('Abra a gestão no navegador do computador para imprimir', 'bad'); return; }
   w.document.write(`<!doctype html><meta charset="utf-8"><title>Crachás</title><style>.pbar{display:flex;gap:8px;margin-bottom:8mm}.pbar button{font:700 15px Arial;padding:10px 18px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer}.pbar button:first-child{background:#1f8a4c;color:#fff;border-color:#1f8a4c}@media print{.pbar{display:none}}body{font-family:Arial,sans-serif;margin:10mm}.g{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm}.cr{border:1px dashed #999;border-radius:4mm;padding:5mm;text-align:center;page-break-inside:avoid}.k{font-size:8pt;letter-spacing:.12em;text-transform:uppercase;color:#555;font-weight:700}.n{font-size:16pt;font-weight:800;margin:2mm 0}.cr svg{max-width:100%;height:auto}</style><div class="pbar"><button onclick="print()">Imprimir</button><button onclick="close()">Fechar</button></div><div class="g">${inner}</div>`);
   w.document.close();
+}
+
+/* ---------- modelo de comanda Xis da Gaúcha (frente com QR + verso com logo) ---------- */
+const CMD_PADRAO = {
+  t1: 'Para prosseguir com o seu pedido, leia o QR CODE ao lado mirando na câmera do tablet.',
+  t2: 'Qualquer dúvida conte com um de nossos colaboradores para te auxiliar.',
+  wifi: true, rede: 'XISDAGAUCHA_CLIENTES', senha: '01102021xis', w: 85, h: 54
+};
+const CMD_CSS = `
+.cmd{container-type:inline-size;position:relative;background:#1c1c1c;color:#fff;overflow:hidden;border-radius:2.2mm;font-family:Verdana,'DejaVu Sans',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact;box-sizing:border-box}
+.cmd *{box-sizing:border-box}
+.cmd .t{position:absolute;left:3.5%;top:5%;width:49%;text-align:center;font-weight:700;display:flex;flex-direction:column;gap:3.5cqw}
+.cmd .t1{font-size:3.5cqw;line-height:1.3}.cmd .t2{font-size:4cqw;line-height:1.3}
+.cmd .tit{position:absolute;left:55%;right:4%;top:3.6%;text-align:center;font-weight:800;color:#1f8f3a;font-size:4.6cqw;letter-spacing:.02em;white-space:nowrap}
+.cmd .qb{position:absolute;left:55%;right:4%;top:18%;bottom:16.5%;background:#fff;border-radius:3cqw;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2.2cqw 2cqw 1.2cqw}
+.cmd .qb svg{width:auto;height:84%;aspect-ratio:1;display:block}
+.cmd .qb span{color:#111;font-weight:800;font-size:2.6cqw;margin-top:.6cqw}
+.cmd .wf{position:absolute;left:4.5%;bottom:3.2%;display:flex;align-items:center;gap:2cqw}
+.cmd .wf svg{width:14.5cqw;height:auto;display:block}
+.cmd .wf div{font-weight:700;font-size:2.35cqw;line-height:1.4;white-space:nowrap}
+.cmd.back svg{position:absolute;inset:0;width:100%;height:100%}
+`;
+const CMD_WIFI = `<svg viewBox="0 0 64 40" xmlns="http://www.w3.org/2000/svg"><rect x="1" y="9" width="62" height="30" rx="7" fill="#2e9e3e"/><text x="32" y="33" text-anchor="middle" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="21" fill="#fff">WiFi</text><g fill="none" stroke="#2e9e3e" stroke-width="2.6" stroke-linecap="round"><path d="M41 9a6 6 0 0 1 9 0"/><path d="M38 6a10.5 10.5 0 0 1 15 0"/><path d="M35 3a15 15 0 0 1 21 0"/></g></svg>`;
+/* verso: hambúrguer branco + "Xis Da Gaúcha" em verde, desenhado em vetor (imprime nítido em qualquer tamanho) */
+const CMD_BACK = `<svg viewBox="0 0 383 245" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"><rect width="383" height="245" fill="#1c1c1c"/>
+<g fill="#fff"><path d="M180 72c0-30 26-50 57-50s57 20 57 50c0 4-3 6-6 6H186c-3 0-6-2-6-6z"/>
+<path d="M170 86c0-4 3-7 7-7h120c4 0 7 3 7 7v26c0 6-5 11-11 11H181c-6 0-11-5-11-11z"/>
+<path d="M181 129h112c4 0 7 3 7 7 0 9-7 15-16 15h-94c-9 0-16-6-16-15 0-4 3-7 7-7z"/></g>
+<path d="M176 92h40l21 13 21-13h40" fill="none" stroke="#1c1c1c" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/>
+<g fill="#3fb54b" font-family="'Baloo 2','Arial Rounded MT Bold','Arial Black',Arial,sans-serif" font-weight="800">
+<text x="44" y="138" font-size="66" textLength="112" lengthAdjust="spacingAndGlyphs" transform="rotate(-4 90 120)">Xis</text>
+<text x="34" y="216" font-size="52" textLength="296" lengthAdjust="spacingAndGlyphs" transform="rotate(-9 190 195)">Da Gaúcha</text></g></svg>`;
+
+function cmdFront(n, c, qr) {
+  return `<div class="cmd"><div class="t"><div class="t1">${esc(c.t1)}</div><div class="t2">${esc(c.t2)}</div></div>
+    <div class="tit">COMANDA ${n}</div><div class="qb">${qr}<span>Comanda ${n}</span></div>
+    ${c.wifi ? `<div class="wf">${CMD_WIFI}<div>Rede: ${esc(c.rede)}<br>Senha: ${esc(c.senha)}</div></div>` : ''}</div>`;
+}
+function cmdBack() { return `<div class="cmd back">${CMD_BACK}</div>`; }
+
+async function comandaModelo() {
+  const lojas = Loja.list(), multi = !!(Store.base().lojas || []).length, cfgDe = id => Object.assign({}, CMD_PADRAO, (multi ? (Loja.cfg(id) || {}).comandaModelo : Store.base().comandaModelo) || {});
+  let lj = Loja.w(), c = cfgDe(lj);
+  const qtd = id => +((Loja.cfg(id) || {}).comandas || Store.settings().comandas || 60);
+  const m = modal({ title: 'Comandas para imprimir', wide: true, body: `<style>${CMD_CSS}</style>
+    <div class="row" style="align-items:flex-start;gap:18px">
+      <div class="col grow" style="min-width:280px;gap:10px">
+        ${lojas.length > 1 ? `<label class="field"><span>Loja</span><select class="input" id="cm-l">${lojas.map(l => `<option value="${l.id}" ${l.id === lj ? 'selected' : ''}>${esc(l.nome)}</option>`).join('')}</select></label>` : ''}
+        <div class="row"><label class="field"><span>Da comanda</span><input class="input num" id="cm-de" type="number" min="1" value="1" style="width:100px"></label><label class="field"><span>Até a comanda</span><input class="input num" id="cm-ate" type="number" min="1" value="${qtd(lj)}" style="width:100px"></label></div>
+        <label class="field"><span>Texto de cima</span><textarea class="input" id="cm-t1" rows="3">${esc(c.t1)}</textarea></label>
+        <label class="field"><span>Texto de baixo</span><textarea class="input" id="cm-t2" rows="3">${esc(c.t2)}</textarea></label>
+        <label class="row small"><input type="checkbox" id="cm-wf" ${c.wifi ? 'checked' : ''}> Mostrar o Wi-Fi</label>
+        <div class="row"><label class="field grow"><span>Rede do Wi-Fi</span><input class="input" id="cm-r" value="${esc(c.rede)}"></label><label class="field grow"><span>Senha do Wi-Fi</span><input class="input" id="cm-s" value="${esc(c.senha)}"></label></div>
+        <div class="row"><label class="field"><span>Largura (mm)</span><input class="input num" id="cm-w" type="number" min="50" max="120" value="${c.w}" style="width:90px"></label><label class="field"><span>Altura (mm)</span><input class="input num" id="cm-h" type="number" min="35" max="90" value="${c.h}" style="width:90px"></label><span class="muted small" style="align-self:flex-end">Padrão: 85 × 54 (cartão de crédito)</span></div>
+      </div>
+      <div class="col" style="gap:8px;width:340px;max-width:100%"><b class="small muted">FRENTE</b><div id="cm-pf"></div><b class="small muted">VERSO</b><div id="cm-pb"></div></div>
+    </div>
+    <p class="muted small" style="margin:0">Imprima em folha A4, <b>frente e verso</b>, virando pela <b>borda maior</b>. As folhas saem intercaladas (frente, verso, frente, verso) e o verso já vem espelhado para casar com a frente. Os textos e o Wi-Fi ficam salvos para a próxima vez.</p>`,
+    foot: '<button class="btn" data-x>Fechar</button><button class="btn" id="cm-sv">Salvar textos</button><button class="btn primary" id="cm-pr">' + ico('printer') + ' Imprimir</button>' });
+  const read = () => { c = { t1: $('#cm-t1', m.el).value.trim(), t2: $('#cm-t2', m.el).value.trim(), wifi: $('#cm-wf', m.el).checked, rede: $('#cm-r', m.el).value.trim(), senha: $('#cm-s', m.el).value.trim(), w: Math.max(50, Math.min(120, +$('#cm-w', m.el).value || 85)), h: Math.max(35, Math.min(90, +$('#cm-h', m.el).value || 54)) }; };
+  const prev = async () => {
+    read(); const de = Math.max(1, +$('#cm-de', m.el).value || 1), sz = `width:340px;aspect-ratio:${c.w}/${c.h}`;
+    $('#cm-pf', m.el).innerHTML = `<div style="${sz}">${cmdFront(de, c, await qrSvg(`XG-C:${de}`)).replace('class="cmd"', `class="cmd" style="width:100%;height:100%"`)}</div>`;
+    $('#cm-pb', m.el).innerHTML = `<div style="${sz}">${cmdBack().replace('class="cmd back"', 'class="cmd back" style="width:100%;height:100%"')}</div>`;
+  };
+  const salvar = async () => { read(); if (multi) await Store.updateLoja(lj, { comandaModelo: c }); else await Store.update('settings', 'main', { comandaModelo: c }); };
+  m.el.addEventListener('input', debounce(prev, 300));
+  const sl = $('#cm-l', m.el); if (sl) sl.onchange = () => { lj = sl.value; c = cfgDe(lj); $('#cm-t1', m.el).value = c.t1; $('#cm-t2', m.el).value = c.t2; $('#cm-wf', m.el).checked = c.wifi; $('#cm-r', m.el).value = c.rede; $('#cm-s', m.el).value = c.senha; $('#cm-w', m.el).value = c.w; $('#cm-h', m.el).value = c.h; $('#cm-ate', m.el).value = qtd(lj); prev(); };
+  $('#cm-sv', m.el).onclick = async () => { await salvar(); toast('Modelo da comanda salvo'); };
+  $('#cm-pr', m.el).onclick = async () => {
+    const de = Math.max(1, +$('#cm-de', m.el).value || 1), ate = Math.max(de, +$('#cm-ate', m.el).value || de);
+    if (ate - de > 499) return toast('Imprima no máximo 500 de cada vez', 'bad');
+    await salvar().catch(() => {});
+    const w = window.open('', '_blank'); if (!w) return toast('Abra o sistema no navegador do computador para imprimir', 'bad');
+    w.document.write('<!doctype html><meta charset="utf-8"><title>Comandas</title><p style="font:16px Arial;padding:20px">Gerando as comandas…</p>'); 
+    /* quantas cabem na A4 (margem 7 mm, 3 mm entre elas) */
+    const gap = 3, mg = 7, cols = Math.max(1, Math.floor((210 - 2 * mg + gap) / (c.w + gap))), rows = Math.max(1, Math.floor((297 - 2 * mg + gap) / (c.h + gap))), per = cols * rows;
+    const nums = []; for (let i = de; i <= ate; i++) nums.push(i);
+    const qrs = {}; for (const i of nums) qrs[i] = await qrSvg(`XG-C:${i}`);
+    let pages = '';
+    for (let p = 0; p < nums.length; p += per) {
+      const lote = nums.slice(p, p + per), cel = [], vcel = [];
+      for (let r = 0; r < rows; r++) for (let k = 0; k < cols; k++) {
+        const f = lote[r * cols + k], b = lote[r * cols + (cols - 1 - k)];   /* verso espelhado na horizontal */
+        cel.push(f ? cmdFront(f, c, qrs[f]) : '<div></div>'); vcel.push(b ? cmdBack() : '<div></div>');
+      }
+      pages += `<div class="pg">${cel.join('')}</div><div class="pg">${vcel.join('')}</div>`;
+    }
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Comandas ${de} a ${ate}</title><link rel="preconnect" href="https://fonts.gstatic.com"><link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800&display=swap" rel="stylesheet"><style>
+      @page{size:A4;margin:0}body{margin:0;background:#ddd;font-family:Arial}
+      .pbar{display:flex;gap:8px;align-items:center;padding:12px;position:sticky;top:0;background:#fff;border-bottom:1px solid #ccc;z-index:2}.pbar button{font:700 15px Arial;padding:10px 18px;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer}.pbar button:first-child{background:#1f8a4c;color:#fff;border-color:#1f8a4c}.pbar span{font-size:13px;color:#444}
+      .pg{width:210mm;height:297mm;padding:${mg}mm;box-sizing:border-box;background:#fff;margin:10px auto;display:grid;grid-template-columns:repeat(${cols},${c.w}mm);grid-auto-rows:${c.h}mm;gap:${gap}mm;justify-content:center;align-content:start;page-break-after:always;break-after:page}
+      .pg>.cmd{width:${c.w}mm;height:${c.h}mm}
+      ${CMD_CSS}
+      @media print{.pbar{display:none}body{background:#fff}.pg{margin:0}}
+    </style></head><body><div class="pbar"><button onclick="window.print()">Imprimir</button><button onclick="window.close()">Fechar</button><span>${nums.length} comandas · ${Math.ceil(nums.length / per)} folha(s) frente e verso · imprimir frente e verso virando pela borda maior, sem margens/“ajustar à página” desligado (escala 100%)</span></div>${pages}</body></html>`);
+    w.document.close();
+  };
+  prev();
 }
 
 /* ======================= EQUIPE: consumo para descontar e refeições ======================= */
