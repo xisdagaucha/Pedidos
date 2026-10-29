@@ -969,7 +969,8 @@ const Horario = {
 const Contas = {
   open: new Set(),
   linhas(t, orders) { return orders.filter(o => o.ticketId === t.id).sort((a, b) => a.at - b.at).flatMap(o => o.items.map(l => Object.assign({}, l, { at: o.at, origin: o.origin, by: o.by }))); },
-  html(ts, orders, { reprint = false, limite = 300 } = {}) {
+  html(ts, orders, { reprint = false, limite = 300, excluir = false } = {}) {
+    this._ts = {}; ts.forEach(t => this._ts[t.id] = t);
     ts = ts.slice().sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0));
     const fech = ts.filter(t => t.status === 'fechada'), canc = ts.filter(t => t.status === 'cancelada');
     const fat = round2(fech.reduce((a, t) => a + (t.total || 0), 0));
@@ -987,10 +988,21 @@ const Contas = {
           <b class="num ct-v">${brl(t.total || 0)}</b><span class="pr-chev">${ico(aberto ? 'up' : 'down')}</span></div>
           ${aberto ? `<div class="ct-body">${I.ls.length ? `<table class="t"><tbody>${I.ls.map(l => `<tr class="${l.canceled ? 'ct-cancel' : ''}"><td class="num">${l.qty}x</td><td>${esc(l.name)}${(l.opts || []).length ? `<div class="muted small">${l.opts.map(o => esc(optTxt(o))).join(', ')}</div>` : ''}${l.obs ? `<div class="muted small">obs: ${esc(l.obs)}</div>` : ''}${l.canceled ? `<div class="small" style="color:var(--bad)">cancelado${l.canceledBy ? ' por ' + esc(l.canceledBy) : ''}${l.canceledAt ? ' às ' + fmtTime(l.canceledAt) : ''}</div>` : ''}</td><td class="small muted">${fmtTime(l.at)}${l.origin ? ' · ' + esc(l.origin) : ''}${l.by ? ' · ' + esc(l.by) : ''}</td><td class="r num">${l.canceled ? '<s>' + brl(Biz.lineTotal(l)) + '</s>' : brl(Biz.lineTotal(l))}</td></tr>`).join('')}</tbody></table>` : (t.summary || []).length ? `<table class="t"><tbody>${t.summary.map(x => `<tr><td class="num">${x.qty}x</td><td>${esc(x.name)}</td><td class="r num">${brl(x.total)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted small" style="margin:0">Os itens desta conta não estão mais disponíveis aqui.</p>'}
             <div class="ct-tot">${t.subtotal != null ? `<div class="kv"><span>Subtotal</span><b>${brl(t.subtotal)}</b></div>` : ''}${t.serviceFee ? `<div class="kv"><span>Taxa de serviço</span><b>${brl(t.serviceFee)}</b></div>` : ''}${t.discount ? `<div class="kv"><span>Desconto</span><b>-${brl(t.discount)}</b></div>` : ''}<div class="kv"><span><b>Total</b></span><b>${brl(t.total || 0)}</b></div>${(t.payments || []).map(p => `<div class="kv"><span>${esc(p.method)}</span><span>${brl(p.value)}</span></div>`).join('')}${t.change ? `<div class="kv"><span>Troco</span><span>${brl(t.change)}</span></div>` : ''}</div>
-            ${reprint && !cn ? `<button class="btn sm" data-rpt="${t.id}" style="align-self:flex-start">${ico('printer')} Reimprimir</button>` : ''}</div>` : ''}</div>`; }).join('') || '<div class="empty">Nenhuma conta fechada neste período.</div>'}</div>
+            ${reprint && !cn ? `<button class="btn sm" data-rpt="${t.id}" style="align-self:flex-start">${ico('printer')} Reimprimir</button>` : ''}${excluir ? `<button class="btn sm danger" data-exc="${t.id}" style="align-self:flex-start">${ico('trash')} Excluir (foi teste)</button>` : ''}</div>` : ''}</div>`; }).join('') || '<div class="empty">Nenhuma conta fechada neste período.</div>'}</div>
       ${ts.length > limite ? `<p class="muted small">Mostrando as ${limite} mais recentes de ${ts.length}.</p>` : ''}`;
   },
-  wire(el, rerender) { $$('[data-ct]', el).forEach(h => h.onclick = e => { if (e.target.closest('button')) return; const id = h.dataset.ct; this.open.has(id) ? this.open.delete(id) : this.open.add(id); rerender(); }); },
+  wire(el, rerender, by = '') {
+    $$('[data-ct]', el).forEach(h => h.onclick = e => { if (e.target.closest('button')) return; const id = h.dataset.ct; this.open.has(id) ? this.open.delete(id) : this.open.add(id); rerender(); });
+    /* conta de teste: some do faturamento, do caixa e das análises (fica marcada como excluída, com registro de quem excluiu) */
+    $$('[data-exc]', el).forEach(b => b.onclick = async () => {
+      const t = this._ts[b.dataset.exc]; if (!t) return;
+      const nome = t.kind === 'comanda' ? `Comanda ${t.comanda}` : Biz.ticketLabel(t);
+      if (!(await confirmBox(`Excluir ${nome} (${brl(t.total || 0)})? Ela sai do faturamento, do caixa do dia e das análises. Use só para conta de teste.`, { ok: 'Excluir conta', danger: true }))) return;
+      await Store.update('tickets', t.id, { status: 'excluida', loja: t.loja || Loja.of(t), excluida: { at: Date.now(), by, status: t.status, total: t.total || 0 } });
+      await Biz.log('Conta excluída (teste)', t, brl(t.total || 0), 'Gestão', by);
+      this.open.delete(t.id); toast(`${nome} excluída`); rerender();
+    });
+  },
 };
 
 /* ======================= LOJAS ======================= */
@@ -2159,7 +2171,13 @@ const Tablet = {
         .catch(() => { const el = $('#sc-msg', m.el); if (el) el.innerHTML = allowKeys ? 'Câmera indisponível aqui.<br>Use o teclado abaixo.' : 'Não foi possível abrir a câmera.<br>Chame um atendente.'; });
     });
   },
-  ticketOfComanda(n) { const lock = Store.get('comandas', String(n)); const t = lock && lock.ticketId && Store.get('tickets', lock.ticketId); return t && (t.status === 'aberta' || t.status === 'conta') ? t : null; },
+  /* a trava da comanda tem chave por loja (Barreiros "2", Palhoça "palhoca-2"); antes o tablet sempre olhava a de Barreiros */
+  ticketOfComanda(n) {
+    const ok = t => t && (t.status === 'aberta' || t.status === 'conta') && Loja.of(t) === Loja.w();
+    const lock = Store.get('comandas', Loja.ck(n, Loja.w())), t = lock && lock.ticketId && Store.get('tickets', lock.ticketId);
+    if (ok(t)) return t;
+    return Store.all('tickets').filter(x => x.kind === 'comanda' && +x.comanda === +n && ok(x)).sort((a, b) => (b.openedAt || 0) - (a.openedAt || 0))[0] || null;
+  },
 
   async send() {
     if (!this.cart.length) return;
@@ -2994,8 +3012,8 @@ const Gestora = {
     const ini = ts.length ? Math.min(...ts.map(t => t.openedAt || t.closedAt)) - 60000 : a;
     const os = ts.length ? await this.q('orders', 'at', ini, b) : [];
     pg.innerHTML = `<div class="page-head"><div class="grow"><h1>Contas e fechamento</h1><div class="sub">Cada comanda e mesa fechada, da última para a primeira. Toque para ver o que foi consumido e cancelado. ${esc(lbl)}${Loja.multi() ? ' · ' + esc(Loja.all() ? 'todas as lojas' : Loja.nome()) : ''}</div></div></div>
-      ${this.periodChips()}${Contas.html(ts, os)}`;
-    this.bindPeriod(pg); Contas.wire(pg, () => this.render());
+      ${this.periodChips()}${Contas.html(ts, os, { excluir: true })}`;
+    this.bindPeriod(pg); Contas.wire(pg, () => { this._memo = {}; this.render(); }, this.quem || 'Gestão');
   },
 
   async vAnalises(pg) {
