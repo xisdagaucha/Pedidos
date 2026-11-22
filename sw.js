@@ -7,7 +7,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
   const fresh = req.mode === 'navigate' || /\.html($|\?)/.test(new URL(req.url).pathname);
-  e.respondWith(fetch(fresh ? new Request(req, { cache: 'no-store' }) : req).then(res => {
+  e.respondWith((fresh ? fetch(req.url, { cache: 'no-store', credentials: 'same-origin' }) : fetch(req)).then(res => {
     const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
     return res;
   }).catch(() => caches.match(req)));
